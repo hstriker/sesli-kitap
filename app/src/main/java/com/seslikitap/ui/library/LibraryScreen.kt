@@ -58,6 +58,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -91,6 +95,9 @@ fun LibraryScreen(
     val playerState by player.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var sortMenu by remember { mutableStateOf(false) }
+
+    val browseMode by vm.browseMode.collectAsStateWithLifecycle()
+    androidx.activity.compose.BackHandler(enabled = ui.browsing && ui.path.isNotEmpty()) { vm.up() }
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) vm.addFolder(uri)
@@ -132,6 +139,12 @@ fun LibraryScreen(
                                 )
                             }
                         }
+                    }
+                    IconButton(onClick = { vm.setBrowse(!browseMode) }) {
+                        Icon(
+                            if (browseMode) Icons.Default.GridView else Icons.Default.AccountTree,
+                            contentDescription = if (browseMode) "Tüm kitapları göster" else "Klasörlere göre göster",
+                        )
                     }
                     IconButton(onClick = { vm.rescan() }, enabled = !scan.running) {
                         Icon(Icons.Default.Refresh, contentDescription = "Yeniden tara")
@@ -195,7 +208,10 @@ fun LibraryScreen(
                             )
                         }
                     }
-                    if (ui.books.isEmpty()) {
+                    if (ui.browsing && ui.path.isNotEmpty()) {
+                        Breadcrumb(ui.path, onGo = { vm.goToLevel(it) })
+                    }
+                    if (ui.books.isEmpty() && ui.folders.isEmpty()) {
                         Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                             Text(
                                 if (ui.totalCount == 0) {
@@ -206,7 +222,7 @@ fun LibraryScreen(
                             )
                         }
                     } else {
-                        BookGrid(ui.books, onOpenBook)
+                        BookGrid(ui.folders, ui.books, showPath = !ui.browsing, onOpenFolder = { vm.openFolder(it) }, onOpenBook = onOpenBook)
                     }
                 }
             }
@@ -258,7 +274,29 @@ private fun EmptyState(onPick: () -> Unit, onDrive: () -> Unit) {
 }
 
 @Composable
-private fun BookGrid(books: List<BookEntity>, onOpenBook: (Long) -> Unit) {
+private fun Breadcrumb(path: List<String>, onGo: (Int) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        androidx.compose.material3.TextButton(onClick = { onGo(-1) }) { Text("Kitaplığım") }
+        path.forEachIndexed { i, name ->
+            Icon(Icons.Default.ChevronRight, null, modifier = Modifier.size(18.dp))
+            androidx.compose.material3.TextButton(onClick = { onGo(i) }, enabled = i < path.size - 1) {
+                Text(name, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BookGrid(
+    folders: List<FolderTile>,
+    books: List<BookEntity>,
+    showPath: Boolean,
+    onOpenFolder: (String) -> Unit,
+    onOpenBook: (Long) -> Unit,
+) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(minSize = 108.dp),
         contentPadding = PaddingValues(12.dp),
@@ -266,14 +304,58 @@ private fun BookGrid(books: List<BookEntity>, onOpenBook: (Long) -> Unit) {
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        items(books, key = { it.id }) { book ->
-            BookTile(book, onClick = { onOpenBook(book.id) })
+        items(folders, key = { "d:" + it.name }) { f ->
+            FolderTileView(f, onClick = { onOpenFolder(f.name) })
+        }
+        items(books, key = { "b:" + it.id }) { book ->
+            BookTile(book, showPath, onClick = { onOpenBook(book.id) })
         }
     }
 }
 
 @Composable
-private fun BookTile(book: BookEntity, onClick: () -> Unit) {
+private fun FolderTileView(f: FolderTile, onClick: () -> Unit) {
+    Column(Modifier.clickable(onClick = onClick)) {
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            modifier = Modifier.fillMaxWidth().aspectRatio(0.68f),
+        ) {
+            Box {
+                if (f.coverPath != null) {
+                    // Klasördeki bir kitabın kapağı, soluk arka plan olarak
+                    BookCover(
+                        f.coverPath, f.name, "",
+                        Modifier.fillMaxSize().clip(RoundedCornerShape(10.dp))
+                            .graphicsLayer { alpha = 0.35f },
+                    )
+                }
+                Column(
+                    Modifier.fillMaxSize().padding(8.dp),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(
+                        Icons.Default.Folder, null,
+                        modifier = Modifier.size(44.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "${f.bookCount} kitap",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        Text(f.name, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun BookTile(book: BookEntity, showPath: Boolean, onClick: () -> Unit) {
     Column(Modifier.clickable(onClick = onClick)) {
         Box {
             Surface(
@@ -314,6 +396,15 @@ private fun BookTile(book: BookEntity, onClick: () -> Unit) {
                 book.author,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        if (showPath && book.relativePath.isNotBlank()) {
+            Text(
+                "📁 " + book.relativePath.trimEnd('/').replace("/", " › "),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

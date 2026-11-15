@@ -41,6 +41,11 @@ class Prefs(context: Context) {
         get() = sp.getString("library_sort", "TITLE") ?: "TITLE"
         set(v) = sp.edit().putString("library_sort", v).apply()
 
+    /** Kitaplıkta klasör görünümü (Drive'daki klasör yapısı). */
+    var libraryBrowse: Boolean
+        get() = sp.getBoolean("library_browse", true)
+        set(v) = sp.edit().putBoolean("library_browse", v).apply()
+
     var speechRate: Float
         get() = sp.getFloat("speech_rate", 1f)
         set(v) = sp.edit().putFloat("speech_rate", v).apply()
