@@ -57,7 +57,11 @@ Amaç: uygulama "yoğun hayattan kaçış ve rahatlama alanı" olacak; yalnızca
   9 sudoku + solitaire (baskısız), 10 nefes balonu, 11 okuma haritası, 12 sanal kitap rafı odası, 13 tek kişilik kitap
   kulübü (Gemini soruları), 14 yıllık okuma kartı, 15 geleceğe mektup, 16 nazik hatırlatıcı, 17 temalar, 18 havaya göre öneri.
   Oyunlar özgün olmalı (belirli bir oyunun kopyası değil).
-- B1/B7 seçilmedi mi diye soruldu, yanıt bekleniyor. D listesi önerildi.
+- B1 (arka plan sesleri) ve B7 (yumuşak kapanış) BİLEREK istenmedi — önerme.
+- **D (seçilenler):** 6 hikâye ortaklığı (sırayla Gemini ile yazma), 8 kitap günlüğü (tarih, puan, not), 9 spoiler'sız
+  sesli tanıtım, 10 yazar köşesi, 11 seri takipçisi (arşivde eksik kitaplar), 12 günün kelimesi (TDK), 13 yabancı dil
+  kitabında cümlenin Türkçesi sesli, 18 araba modu (büyük düğmeler), 19 hoparlöre gönder (Bluetooth/Chromecast).
+  (D1-5, 7, 14-17 istenmedi.) E listesi önerildi.
 
 ## Kararlar
 
