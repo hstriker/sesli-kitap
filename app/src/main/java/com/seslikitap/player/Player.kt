@@ -56,6 +56,8 @@ data class PlayerState(
     val finished: Boolean = false,
     /** Kitabın bölüm uzunlukları hesaplandı (kitabın kalan süresi gösterilebilir). */
     val lengthsReady: Boolean = false,
+    /** Kitaba uzun aradan (3+ gün) sonra dönüldü: "nerede kalmıştık" önerilir. */
+    val longAbsence: Boolean = false,
     /** Kitap bitince: serinin sıradaki kitabı. */
     val nextBookId: Long? = null,
     val nextBookTitle: String? = null,
@@ -216,6 +218,9 @@ class Player(
                 }
                 content?.close()
                 content = newContent
+                val absent = entity.progress > 0f && entity.lastOpenedAt != null &&
+                    System.currentTimeMillis() - entity.lastOpenedAt > 3 * 24 * 3600_000L
+                _state.update { it.copy(longAbsence = absent) }
                 db.books().markOpened(bookId, System.currentTimeMillis())
 
                 val saved = withContext(Dispatchers.IO) { db.positions().get(bookId) }
@@ -613,6 +618,48 @@ class Player(
 
     /** Tahmini toplam dinleme süresi (ms) — kayıtlı bölüm uzunluklarından. */
     fun estimatedTotalMs(lengths: IntArray): Long = (lengths.sum() / (cps * _state.value.rate.coerceAtLeast(0.3f)) * 1000).toLong()
+
+    // ------------------------------------------------------------------ Nerede kalmıştık? (Gemini)
+
+    val hasGeminiKey: Boolean get() = !prefs.geminiKey.isNullOrBlank()
+
+    /** Kaldığı yere kadar olan son kısım (en fazla [maxChars]); kaldığı yerden sonrası asla. */
+    private suspend fun recapText(maxChars: Int = 60_000): Pair<List<String>, String> = withContext(Dispatchers.IO) {
+        val c = content ?: return@withContext emptyList<String>() to ""
+        val st = _state.value
+        val parts = ArrayList<String>()
+        var total = 0
+        val cur = c.chapter(st.chapterIndex)
+        val curText = (0 until st.sentenceIndex.coerceAtMost(cur.sentences.size)).joinToString(" ") { cur.text(it) }
+        parts.add(curText); total += curText.length
+        var i = st.chapterIndex - 1
+        while (i >= 0 && total < maxChars) {
+            val ch = c.chapter(i)
+            val t = (0 until ch.sentences.size).joinToString(" ") { ch.text(it) }
+            parts.add(0, "[${ch.title}] " + t.takeLast(maxChars - total))
+            total += t.length
+            i--
+        }
+        val titles = (0 until st.chapterIndex).map { c.chapterTitle(it) }.distinct()
+        titles to parts.joinToString("\n\n").takeLast(maxChars)
+    }
+
+    /** Gemini ile "nerede kalmıştık" özeti. */
+    suspend fun recap(): String {
+        val key = prefs.geminiKey?.takeIf { it.isNotBlank() } ?: throw java.io.IOException("Gemini anahtarı eklenmemiş")
+        val st = _state.value
+        val (titles, text) = recapText()
+        if (text.length < 200) return "Kitabın henüz başındasın; özetlenecek kadar ilerlemedin."
+        return Gemini.generate(key, Gemini.recapPrompt(st.bookTitle, st.author, titles, text))
+    }
+
+    /** Kitaptan bağımsız bir metni (ör. özet) seslendirir; kitap duraklatılır, konum değişmez. */
+    fun speakAside(text: String) {
+        pause()
+        engine().speak("aside:${System.currentTimeMillis()}", text, true)
+    }
+
+    fun dismissLongAbsence() = _state.update { it.copy(longAbsence = false) }
 
     // ------------------------------------------------------------------ Kaçırdım
 

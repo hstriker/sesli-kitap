@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -58,6 +59,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -140,6 +142,9 @@ fun ReaderScreen(bookId: Long, onBack: () -> Unit) {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
                 },
                 actions = {
+                    IconButton(onClick = { sheet = ReaderSheet.RECAP }) {
+                        Icon(Icons.Default.History, "Nerede kalmıştık?")
+                    }
                     IconButton(onClick = { sheet = ReaderSheet.TOC }) {
                         Icon(Icons.AutoMirrored.Filled.List, "İçindekiler")
                     }
@@ -193,6 +198,22 @@ fun ReaderScreen(bookId: Long, onBack: () -> Unit) {
                 else -> {
                     Column(Modifier.fillMaxSize()) {
                         EngineWarning(st.engine)
+                        if (st.longAbsence) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            ) {
+                                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "Bu kitaba bir süredir ara vermişsin. Kısa bir özet ister misin?",
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    TextButton(onClick = { player.dismissLongAbsence(); sheet = ReaderSheet.RECAP }) { Text("Özetle") }
+                                    TextButton(onClick = { player.dismissLongAbsence() }) { Text("Gerek yok") }
+                                }
+                            }
+                        }
                         if (st.finished && st.nextBookId != null) {
                             Card(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
@@ -259,11 +280,12 @@ fun ReaderScreen(bookId: Long, onBack: () -> Unit) {
             onDismiss = { sheet = null },
         )
         ReaderSheet.SLEEP -> SleepSheet(onDismiss = { sheet = null })
+        ReaderSheet.RECAP -> RecapSheet(onDismiss = { sheet = null })
         null -> {}
     }
 }
 
-enum class ReaderSheet { TOC, BOOKMARKS, SETTINGS, SLEEP }
+enum class ReaderSheet { TOC, BOOKMARKS, SETTINGS, SLEEP, RECAP }
 
 @Composable
 private fun EngineWarning(status: EngineStatus) {

@@ -331,3 +331,54 @@ fun SleepSheet(onDismiss: () -> Unit) {
         }
     }
 }
+
+@Composable
+fun RecapSheet(onDismiss: () -> Unit) {
+    val player = LocalContext.current.container.player
+    var text by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(Unit) {
+        if (!player.hasGeminiKey) {
+            error = "Bu özellik için bir Gemini anahtarı gerekiyor. Ayarlar → Yapay zekâ özeti bölümünden ekleyebilirsin."
+            return@LaunchedEffect
+        }
+        try {
+            text = player.recap()
+        } catch (e: Exception) {
+            error = e.message ?: "Özet alınamadı"
+        }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(horizontal = 20.dp).verticalScroll(rememberScrollState())) {
+            Text("Nerede kalmıştık?", style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(12.dp))
+            when {
+                error != null -> Text(error!!, color = MaterialTheme.colorScheme.error)
+                text == null -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        androidx.compose.material3.CircularProgressIndicator(Modifier.padding(end = 12.dp))
+                        Text("Kaldığın yere kadar olanlar özetleniyor…")
+                    }
+                }
+                else -> {
+                    Text(text!!, style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(12.dp))
+                    Row {
+                        androidx.compose.material3.Button(onClick = { player.speakAside(text!!) }) { Text("Sesli dinle") }
+                        Spacer(Modifier.width(8.dp))
+                        OutlinedButton(onClick = { player.play(); onDismiss() }) { Text("Kitaba devam et") }
+                    }
+                    Text(
+                        "Özet, kitabın kaldığın yere kadar olan kısmından Gemini ile üretildi; sonrası gönderilmedi.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(40.dp))
+        }
+    }
+}

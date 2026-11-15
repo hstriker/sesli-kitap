@@ -158,6 +158,10 @@ fun FoldersScreen(onBack: (() -> Unit)?, onAddDrive: () -> Unit) {
                     Spacer(Modifier.height(16.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(16.dp))
+                    GeminiKeySection()
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(16.dp))
                     Text("Günlük dinleme hedefi", style = MaterialTheme.typography.titleSmall)
                     Text(
                         "Ana sayfadaki halka bu hedefe göre dolar.",
@@ -249,5 +253,34 @@ fun FoldersScreen(onBack: (() -> Unit)?, onAddDrive: () -> Unit) {
                 TextButton(onClick = { confirmRemove = null }) { Text("Vazgeç") }
             },
         )
+    }
+}
+
+@Composable
+private fun GeminiKeySection() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = context.container.prefs
+    var key by remember { mutableStateOf(prefs.geminiKey.orEmpty()) }
+    var saved by remember { mutableStateOf(false) }
+    Column {
+        Text("Yapay zekâ özeti (Gemini)", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "\"Nerede kalmıştık?\" özeti için ücretsiz bir Gemini anahtarı: aistudio.google.com/apikey → " +
+                "Create API key. Anahtar sadece bu telefonda saklanır. Özet için kitabın kaldığın yere kadar " +
+                "olan son kısmı Google'a gönderilir.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        androidx.compose.material3.OutlinedTextField(
+            value = key,
+            onValueChange = { key = it; saved = false },
+            placeholder = { Text("AIza…") },
+            singleLine = true,
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
+        androidx.compose.material3.TextButton(onClick = { prefs.geminiKey = key.ifBlank { null }; saved = true }) {
+            Text(if (saved) "Kaydedildi ✓" else "Kaydet")
+        }
     }
 }

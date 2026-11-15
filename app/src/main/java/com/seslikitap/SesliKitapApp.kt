@@ -121,6 +121,11 @@ class Prefs(context: Context) {
         get() = sp.getInt("prefetch_chapters", 3)
         set(v) = sp.edit().putInt("prefetch_chapters", v).apply()
 
+    /** Google AI Studio (Gemini) anahtarı — "nerede kalmıştık" özeti için. Yalnızca bu telefonda saklanır. */
+    var geminiKey: String?
+        get() = sp.getString("gemini_key", null)
+        set(v) = sp.edit().putString("gemini_key", v?.trim()).apply()
+
     var speechRate: Float
         get() = sp.getFloat("speech_rate", 1f)
         set(v) = sp.edit().putFloat("speech_rate", v).apply()
