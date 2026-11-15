@@ -31,6 +31,13 @@ class AppContainer(context: Context) {
     val library = LibraryRepository(context, db, appScope, prefs)
     val player by lazy { Player(appContext, db, prefs) }
     val driveAuth by lazy { DriveAuth(appContext) }
+    /** Doğal ses (Google Cloud Text-to-Speech) izni. */
+    val cloudAuth by lazy {
+        DriveAuth(
+            appContext, DriveAuth.CLOUD_SCOPE,
+            "Doğal ses için Google bağlantısı gerekiyor: Ayarlar → Doğal ses → \"Google'a bağlan\".",
+        )
+    }
     /** Ana sayfadan kitaplıkta belirli bir klasörü açmak için. */
     val pendingLibraryPath = kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     val drive by lazy { DriveApi(driveAuth) }
@@ -52,6 +59,34 @@ class Prefs(context: Context) {
     var dailyGoalMin: Int
         get() = sp.getInt("daily_goal_min", 30)
         set(v) = sp.edit().putInt("daily_goal_min", v).apply()
+
+    /** "phone": telefondaki TTS, "cloud": Google WaveNet (doğal ses). */
+    var voiceMode: String
+        get() = sp.getString("voice_mode", "phone") ?: "phone"
+        set(v) = sp.edit().putString("voice_mode", v).apply()
+
+    var cloudVoice: String
+        get() = sp.getString("cloud_voice", "tr-TR-Wavenet-E") ?: "tr-TR-Wavenet-E"
+        set(v) = sp.edit().putString("cloud_voice", v).apply()
+
+    /** Aylık doğal ses karakter sınırı (Google'ın ücretsiz kotası 4 milyon; güvenlik payıyla). */
+    var cloudMonthlyLimit: Long
+        get() = sp.getLong("cloud_limit", 3_800_000L)
+        set(v) = sp.edit().putLong("cloud_limit", v).apply()
+
+    /** Bu ay Google'a gönderilen karakter sayısı. */
+    @Synchronized
+    fun cloudCharsThisMonth(): Long {
+        val month = java.time.YearMonth.now().toString()
+        return if (sp.getString("cloud_month", "") == month) sp.getLong("cloud_chars", 0L) else 0L
+    }
+
+    @Synchronized
+    fun addCloudChars(n: Long) {
+        val month = java.time.YearMonth.now().toString()
+        val current = cloudCharsThisMonth()
+        sp.edit().putString("cloud_month", month).putLong("cloud_chars", current + n).apply()
+    }
 
     var speechRate: Float
         get() = sp.getFloat("speech_rate", 1f)

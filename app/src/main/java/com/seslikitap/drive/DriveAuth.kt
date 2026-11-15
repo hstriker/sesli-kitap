@@ -29,11 +29,18 @@ sealed interface AuthOutcome {
  * Google Drive salt okuma izni. Android OAuth istemcisi (paket adı + SHA-1) Google Cloud'da
  * tanımlı olmalı; uygulamada gizli anahtar bulunmaz.
  */
-class DriveAuth(private val context: Context) {
+class DriveAuth(
+    private val context: Context,
+    /** İstenen Google izni (varsayılan: Drive salt okuma). */
+    private val scope: String = SCOPE,
+    /** Onay gerektiğinde kullanıcıya gösterilecek yönlendirme. */
+    private val reconnectHint: String =
+        "Google Drive bağlantısının yenilenmesi gerekiyor. Klasörler ekranından \"Google Drive'a bağlan\"a dokunun.",
+) {
 
     private val client get() = Identity.getAuthorizationClient(context)
     private val request: AuthorizationRequest = AuthorizationRequest.builder()
-        .setRequestedScopes(listOf(Scope(SCOPE)))
+        .setRequestedScopes(listOf(Scope(scope)))
         .build()
 
     @Volatile private var token: String? = null
@@ -83,9 +90,7 @@ class DriveAuth(private val context: Context) {
         }
         return when (val r = authorizeBlocking()) {
             is AuthOutcome.Ok -> r.token
-            is AuthOutcome.NeedsConsent -> throw DriveAuthException(
-                "Google Drive bağlantısının yenilenmesi gerekiyor. Klasörler ekranından \"Google Drive'a bağlan\"a dokunun."
-            )
+            is AuthOutcome.NeedsConsent -> throw DriveAuthException(reconnectHint)
             is AuthOutcome.Failed -> throw DriveAuthException(r.message)
         }
     }
@@ -105,6 +110,8 @@ class DriveAuth(private val context: Context) {
 
     companion object {
         const val SCOPE = "https://www.googleapis.com/auth/drive.readonly"
+        /** Google Cloud Text-to-Speech için. */
+        const val CLOUD_SCOPE = "https://www.googleapis.com/auth/cloud-platform"
         private const val TOKEN_LIFETIME_MS = 45 * 60 * 1000L
     }
 }

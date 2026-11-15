@@ -9,6 +9,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.core.content.ContextCompat
 import com.seslikitap.Kayit
+import com.seslikitap.container
 import com.seslikitap.Prefs
 import com.seslikitap.core.BlockKind
 import com.seslikitap.core.EpubParser
@@ -91,16 +92,30 @@ class Player(
 
     private fun engine(): SpeechEngine {
         engine?.let { return it }
-        val e = AndroidTtsEngine(context, prefs.ttsEngine)
+        val cloud = prefs.voiceMode == "cloud"
+        val e: SpeechEngine =
+            if (cloud) CloudTtsEngine(context, context.container.cloudAuth, prefs)
+            else AndroidTtsEngine(context, prefs.ttsEngine)
         e.listener = this
         engine = e
         engineWatch = scope.launch {
+            if (e is CloudTtsEngine) {
+                // Doğal ses uyarılarını (kota doldu, bağlantı gerekli…) ekranda bir kez göster
+                launch {
+                    e.notice.collect { msg ->
+                        if (msg != null) {
+                            _state.update { it.copy(error = msg) }
+                            e.notice.value = null
+                        }
+                    }
+                }
+            }
             e.status.collect { s ->
                 _state.update { it.copy(engine = s) }
                 if (s == EngineStatus.Ready) {
                     e.setRate(_state.value.rate)
                     e.setPitch(_state.value.pitch)
-                    prefs.voiceName?.let { e.setVoice(it) }
+                    if (cloud) e.setVoice(prefs.cloudVoice) else prefs.voiceName?.let { e.setVoice(it) }
                 }
             }
         }
@@ -110,9 +125,20 @@ class Player(
     fun voices(): List<VoiceInfo> = engine().voices()
 
     fun setVoice(name: String?) {
-        prefs.voiceName = name
+        if (prefs.voiceMode == "cloud") prefs.cloudVoice = name ?: CloudTtsEngine.DEFAULT_VOICE
+        else prefs.voiceName = name
         engine().setVoice(name)
         restartIfPlaying()
+    }
+
+    val usingCloudVoice: Boolean get() = prefs.voiceMode == "cloud"
+
+    /** Telefon sesi ile doğal ses (Google WaveNet) arasında geçiş. */
+    fun setCloudVoice(on: Boolean) {
+        val wasPlaying = _state.value.playing
+        prefs.voiceMode = if (on) "cloud" else "phone"
+        resetEngine()
+        if (wasPlaying) play()
     }
 
     /** Ses motoru değişti (ör. başka bir TTS uygulaması seçildi). */
