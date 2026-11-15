@@ -135,6 +135,10 @@ class Prefs(context: Context) {
         get() = sp.getString("gemini_key", null)
         set(v) = sp.edit().putString("gemini_key", v?.trim()).apply()
 
+    /** Kitapta kalınan cümlenin başı (cihazlar arası tam yer eşitleme için). */
+    fun positionExcerpt(bookId: Long): String? = sp.getString("pos_excerpt_$bookId", null)
+    fun setPositionExcerpt(bookId: Long, text: String) = sp.edit().putString("pos_excerpt_$bookId", text).apply()
+
     var autoBackup: Boolean
         get() = sp.getBoolean("auto_backup", false)
         set(v) = sp.edit().putBoolean("auto_backup", v).apply()

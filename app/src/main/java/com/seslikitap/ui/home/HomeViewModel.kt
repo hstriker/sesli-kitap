@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 
 data class HomeFolder(val name: String, val count: Int, val coverPath: String?)
@@ -105,6 +106,15 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         // Rastgele öneri her açılışta farklı olsun
         suggestionSeed.value = (System.currentTimeMillis() / 1000 % 100_000).toInt()
         repo.autoScan()
+        // Bilgisayarda (web) dinlenenleri al: Drive yedeğini birleştir (yalnızca daha yeni konumlar)
+        if (container.prefs.autoBackup) {
+            viewModelScope.launch(Dispatchers.IO) {
+                try {
+                    val b = com.seslikitap.data.Backup(container.appContext)
+                    b.download()?.let { b.restore(it, positionsOnly = true) }
+                } catch (_: Exception) {}
+            }
+        }
     }
 
     fun nextSuggestion() { suggestionSeed.value = suggestionSeed.value + 1 }

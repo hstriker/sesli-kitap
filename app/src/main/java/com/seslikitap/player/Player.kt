@@ -230,7 +230,10 @@ class Player(
                         c.index to c.sentenceForAnchor(anchor)
                     } else if (saved != null && saved.chapterIndex in 0 until newContent.chapterCount) {
                         val c = newContent.chapter(saved.chapterIndex)
-                        c.index to c.sentenceIndexOf(saved.blockIndex, saved.sentenceIndex)
+                        // Başka cihazda (web) kaydedilen yer: cümle metniyle tam yeri bul
+                        val ex = prefs.positionExcerpt(bookId)?.take(40)
+                        val byText = ex?.takeIf { it.length >= 10 }?.let { e -> (0 until c.sentences.size).firstOrNull { c.text(it).startsWith(e) } }
+                        c.index to (byText ?: c.sentenceIndexOf(saved.blockIndex, saved.sentenceIndex))
                     } else 0 to 0
                 }
                 val startChapter = withContext(Dispatchers.IO) { newContent.nextNonEmpty(ch) }
@@ -338,8 +341,23 @@ class Player(
         speakFromCurrent()
     }
 
+    private var backupJob: Job? = null
+
+    /** Duraklatınca 20 sn sonra Drive yedeğini güncelle (bilgisayarla eşitleme için). */
+    private fun scheduleSyncUpload() {
+        if (!prefs.autoBackup) return
+        backupJob?.cancel()
+        backupJob = scope.launch {
+            delay(20_000)
+            withContext(Dispatchers.IO) {
+                try { com.seslikitap.data.Backup(context).upload() } catch (e: Exception) { Kayit.error("Eşitleme yüklemesi", e) }
+            }
+        }
+    }
+
     fun pause() {
         if (!_state.value.playing) return
+        scheduleSyncUpload()
         stopListenClock()
         generation++
         engine?.stop()
@@ -822,8 +840,10 @@ class Player(
             lastProgressWrite = now
             lastProgressChapter = ch.index
         }
+        val excerpt = ch.text(st.sentenceIndex).take(80)
         scope.launch(Dispatchers.IO) {
             db.positions().upsert(pos)
+            prefs.setPositionExcerpt(id, excerpt)
             if (writeProgress) db.books().setProgress(id, progress)
         }
     }

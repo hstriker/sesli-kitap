@@ -48,6 +48,7 @@ class Backup(private val context: Context) {
                 books.filter { it.favorite || it.progress > 0f || it.finished || it.listenedMs > 0 || it.lastOpenedAt != null }
                     .forEach { b ->
                         put(JSONObject().put("uri", key(b)).put("alt", altKey(b))
+                            .put("title", b.title).put("author", b.author).put("path", b.relativePath)
                             .put("favorite", b.favorite).put("progress", b.progress.toDouble()).put("finished", b.finished)
                             .put("finishedAt", b.finishedAt ?: 0L).put("listenedMs", b.listenedMs)
                             .put("lastOpenedAt", b.lastOpenedAt ?: 0L))
@@ -55,7 +56,10 @@ class Backup(private val context: Context) {
             })
             put("konumlar", JSONArray().apply {
                 db.positions().all().forEach { p ->
-                    ref(p.bookId)?.let { put(it.put("ch", p.chapterIndex).put("bl", p.blockIndex).put("se", p.sentenceIndex).put("t", p.updatedAt)) }
+                    ref(p.bookId)?.let {
+                        put(it.put("ch", p.chapterIndex).put("bl", p.blockIndex).put("se", p.sentenceIndex).put("t", p.updatedAt)
+                            .put("excerpt", prefs.positionExcerpt(p.bookId) ?: ""))
+                    }
                 }
             })
             put("yerimleri", JSONArray().apply {
@@ -81,6 +85,11 @@ class Backup(private val context: Context) {
                     }))
                 }
             })
+            put("klasorler", JSONArray().apply {
+                db.folders().all().filter { DriveUri.isDrive(it.uri) }.forEach {
+                    put(JSONObject().put("id", DriveUri.id(it.uri)).put("name", it.name))
+                }
+            })
             put("dinleme", JSONArray().apply { db.listening().all().forEach { put(JSONObject().put("day", it.day).put("ms", it.ms)) } })
             put("ayarlar", JSONObject()
                 .put("speechRate", prefs.speechRate.toDouble()).put("speechPitch", prefs.speechPitch.toDouble())
@@ -92,14 +101,18 @@ class Backup(private val context: Context) {
     }
 
     /** Yedeği mevcut kitaplığa birleştirir (silmez; ilerlemede büyük olanı alır). Eşleşen kitap sayısını döner. */
-    suspend fun restore(json: JSONObject): Int = withContext(Dispatchers.IO) {
+    /**
+     * [positionsOnly]: açılıştaki eşitleme — yalnızca daha yeni "kaldığın yer" kayıtları alınır;
+     * favori, ayar vb. dokunulmaz (telefonda sonradan yapılan değişiklikler geri dönmesin).
+     */
+    suspend fun restore(json: JSONObject, positionsOnly: Boolean = false): Int = withContext(Dispatchers.IO) {
         val books = db.books().all()
         val byUri = books.associateBy { key(it) }
         val byAlt = books.associateBy { altKey(it) }
         fun find(o: JSONObject): BookEntity? = byUri[o.optString("uri")] ?: byAlt[o.optString("alt")]
         var matched = 0
 
-        json.optJSONArray("kitaplar")?.let { arr ->
+        if (!positionsOnly) json.optJSONArray("kitaplar")?.let { arr ->
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 val b = find(o) ?: continue
@@ -124,9 +137,10 @@ class Backup(private val context: Context) {
                 val t = o.optLong("t")
                 if ((existing[b.id]?.updatedAt ?: 0L) >= t) continue
                 db.positions().upsert(PositionEntity(b.id, o.optInt("ch"), o.optInt("bl"), o.optInt("se"), t))
+                o.optString("excerpt").takeIf { it.isNotBlank() }?.let { prefs.setPositionExcerpt(b.id, it) }
             }
         }
-        json.optJSONArray("yerimleri")?.let { arr ->
+        if (!positionsOnly) json.optJSONArray("yerimleri")?.let { arr ->
             val existing = db.bookmarks().all().map { "${it.bookId}|${it.chapterIndex}|${it.blockIndex}|${it.sentenceIndex}" }.toHashSet()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
@@ -141,7 +155,7 @@ class Backup(private val context: Context) {
                 )
             }
         }
-        json.optJSONArray("alintilar")?.let { arr ->
+        if (!positionsOnly) json.optJSONArray("alintilar")?.let { arr ->
             val existing = db.quotes().all().map { it.text }.toHashSet()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
@@ -156,7 +170,7 @@ class Backup(private val context: Context) {
                 )
             }
         }
-        json.optJSONArray("raflar")?.let { arr ->
+        if (!positionsOnly) json.optJSONArray("raflar")?.let { arr ->
             val shelves = db.shelves().allShelves().associateBy { it.name }.toMutableMap()
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
@@ -170,7 +184,7 @@ class Backup(private val context: Context) {
                 }
             }
         }
-        json.optJSONArray("dinleme")?.let { arr ->
+        if (!positionsOnly) json.optJSONArray("dinleme")?.let { arr ->
             val existing = db.listening().all().associate { it.day to it.ms }
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
@@ -179,7 +193,7 @@ class Backup(private val context: Context) {
                 if (day.isNotBlank() && ms > (existing[day] ?: 0L)) db.listening().upsert(ListeningDay(day, ms))
             }
         }
-        json.optJSONObject("ayarlar")?.let { a ->
+        if (!positionsOnly) json.optJSONObject("ayarlar")?.let { a ->
             prefs.speechRate = a.optDouble("speechRate", prefs.speechRate.toDouble()).toFloat()
             prefs.speechPitch = a.optDouble("speechPitch", prefs.speechPitch.toDouble()).toFloat()
             prefs.voiceMode = a.optString("voiceMode", prefs.voiceMode)
@@ -196,8 +210,17 @@ class Backup(private val context: Context) {
     // ------------------------------------------------------------------ Drive appDataFolder
 
     suspend fun upload() = withContext(Dispatchers.IO) {
-        val body = build().toString().toByteArray(Charsets.UTF_8)
         val existing = findFile()
+        // Başka cihazın (web) yazdığı daha yeni konumları kaybetmemek için önce birleştir
+        if (existing != null) {
+            try {
+                val remote = JSONObject(String(http("$BASE/files/$existing?alt=media", "GET", null, null), Charsets.UTF_8))
+                restore(remote, positionsOnly = true)
+            } catch (e: Exception) {
+                Kayit.error("Yedek birleştirilemedi", e)
+            }
+        }
+        val body = build().toString().toByteArray(Charsets.UTF_8)
         if (existing != null) {
             http("$UPLOAD/files/$existing?uploadType=media", "POST", body, "application/json", override = "PATCH")
         } else {
