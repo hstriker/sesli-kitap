@@ -61,7 +61,10 @@ Amaç: uygulama "yoğun hayattan kaçış ve rahatlama alanı" olacak; yalnızca
 - **D (seçilenler):** 6 hikâye ortaklığı (sırayla Gemini ile yazma), 8 kitap günlüğü (tarih, puan, not), 9 spoiler'sız
   sesli tanıtım, 10 yazar köşesi, 11 seri takipçisi (arşivde eksik kitaplar), 12 günün kelimesi (TDK), 13 yabancı dil
   kitabında cümlenin Türkçesi sesli, 18 araba modu (büyük düğmeler), 19 hoparlöre gönder (Bluetooth/Chromecast).
-  (D1-5, 7, 14-17 istenmedi.) E listesi önerildi.
+  (D1-5, 7, 14-17 istenmedi.)
+- **E (seçilenler):** 8 tatil modu (kitap + Gemini seslerini önceden indir), 9 kendi ödüllerin (yılın kitabı vb.),
+  10 baskısız koleksiyon rozetleri, 11 günün bilmecesi, 15 tablet/yatay iki sütun, 18 kitap ağacı (bitirince yaprak).
+  F listesi önerildi.
 
 ## Kararlar
 
