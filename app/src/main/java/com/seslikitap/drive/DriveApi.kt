@@ -237,7 +237,8 @@ class DriveApi(private val auth: DriveAuth) {
     }
 
     private fun downloadInner(fileId: String, dest: File) {
-        val tmp = File(dest.parentFile, dest.name + ".part")
+        // Her indirme kendi geçici dosyasına yazar
+        val tmp = File(dest.parentFile, dest.name + ".part-" + System.nanoTime())
         var attempt = 0
         var refresh = false
         while (true) {
@@ -255,7 +256,11 @@ class DriveApi(private val auth: DriveAuth) {
                 } finally {
                     conn.disconnect()
                 }
-                if (!tmp.renameTo(dest)) { tmp.copyTo(dest, overwrite = true); tmp.delete() }
+                if (!tmp.renameTo(dest)) {
+                    if (tmp.exists()) tmp.copyTo(dest, overwrite = true)
+                    tmp.delete()
+                }
+                if (!dest.exists() || dest.length() == 0L) throw IOException("İndirilen kitap kaydedilemedi")
                 return
             } catch (e: IOException) {
                 tmp.delete()
@@ -404,13 +409,18 @@ object DriveCache {
     fun isCached(context: Context, fileId: String) = fileFor(context, fileId).let { it.exists() && it.length() > 0 }
 
     /** Kitabın telefondaki kopyası; yoksa indirir. */
+    /** Kitap başına kilit: aynı dosya aynı anda iki kez indirilmesin (kitap sayfası + okuyucu). */
+    private val locks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
     fun ensure(context: Context, api: DriveApi, fileId: String): File {
         val f = fileFor(context, fileId)
-        if (f.exists() && f.length() > 0) {
-            f.setLastModified(System.currentTimeMillis())
-            return f
+        synchronized(locks.getOrPut(fileId) { Any() }) {
+            if (f.exists() && f.length() > 0) {
+                f.setLastModified(System.currentTimeMillis())
+                return f
+            }
+            api.download(fileId, f)
         }
-        api.download(fileId, f)
         trim(context)
         return f
     }
@@ -420,6 +430,9 @@ object DriveCache {
     }
 
     private fun trim(context: Context) {
+        // Yarım kalmış eski indirmeler
+        dir(context).listFiles { f -> f.name.contains(".part") && System.currentTimeMillis() - f.lastModified() > 3_600_000L }
+            ?.forEach { it.delete() }
         val files = dir(context).listFiles { f -> f.name.endsWith(".epub") }?.sortedByDescending { it.lastModified() } ?: return
         files.drop(KEEP).forEach { it.delete() }
     }
