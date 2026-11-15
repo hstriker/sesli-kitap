@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.security.MessageDigest
@@ -65,6 +67,7 @@ class GeminiTtsEngine(
     private val cacheDir = File(context.filesDir, "ses-gemini").apply { mkdirs() }
     /** Aynı parça için süren istek: duraklat/devam et aynı isteği bekler, yeni istek açmaz. */
     private val inflight = ConcurrentHashMap<String, Deferred<File?>>()
+    private val requestLock = Mutex()
 
     // ------------------------------------------------------------------ SpeechEngine
 
@@ -162,8 +165,22 @@ class GeminiTtsEngine(
         if (System.currentTimeMillis() < prefs.geminiBlockedUntil) return null
         return try {
             val tmp = File(cacheDir, out.name + ".tmp")
-            GeminiTts.synthesize(key, text, voice, narrator, tmp)
+            // Dakikalık sınırlar (3 istek, 10 bin token) için istekler sırayla gider;
+            // kısa bekletmede bir kez bekleyip yeniden denenir.
+            requestLock.withLock {
+                try {
+                    GeminiTts.synthesize(key, text, voice, narrator, tmp)
+                } catch (e: GeminiTts.QuotaException) {
+                    if (e.daily || e.retrySeconds > 90) throw e
+                    Kayit.log("Gemini dakikalık sınır; ${e.retrySeconds} sn bekleniyor")
+                    delay((e.retrySeconds + 2) * 1000L)
+                    GeminiTts.synthesize(key, text, voice, narrator, tmp)
+                }
+            }
             tmp.renameTo(out)
+            // Tanı: ses beklenenden çok kısaysa Gemini metnin sonunu kesmiş olabilir
+            val secs = (out.length() - 44) / 48_000.0
+            Kayit.log("Gemini parça: ${text.length} karakter, ${secs.toInt()} sn (${"%.1f".format(text.length / secs.coerceAtLeast(1.0))} karakter/sn)")
             prefs.addGeminiUsage(text.length.toLong())
             trimCache()
             out

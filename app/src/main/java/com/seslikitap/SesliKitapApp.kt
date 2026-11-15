@@ -144,9 +144,9 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("gemini_narrator", true)
         set(v) = sp.edit().putBoolean("gemini_narrator", v).apply()
 
-    /** Gemini'nin günlük istek sınırı (Google'ın hata yanıtından öğrenilir; 0: henüz bilinmiyor). */
+    /** Gemini'nin günlük istek sınırı (ücretsiz katman: 10; Google'ın hata yanıtından güncellenir). */
     var geminiDailyLimit: Int
-        get() = sp.getInt("gemini_daily_limit", 0)
+        get() = sp.getInt("gemini_daily_limit", 10)
         set(v) = sp.edit().putInt("gemini_daily_limit", v).apply()
 
     /** Bu zamana kadar (epoch ms) Gemini'ye istek gönderilmez; kota dolunca ayarlanır. */

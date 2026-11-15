@@ -950,8 +950,8 @@ class Player(
     companion object {
         private const val TAG = "Player"
         private const val LOOKAHEAD = 3
-        /** Gemini parça boyu (karakter): ücretsiz kotada günlük istek sayısı az olduğu için uzun parçalar. */
-        private const val GROUP_TARGET_CHARS = 2000
-        private const val GROUP_MAX_CHARS = 3200
+        /** Gemini parça boyu (karakter, ~5-7 dk ses): ücretsiz katmanda günde 10 istek olduğu için uzun parçalar. */
+        private const val GROUP_TARGET_CHARS = 5000
+        private const val GROUP_MAX_CHARS = 6500
     }
 }

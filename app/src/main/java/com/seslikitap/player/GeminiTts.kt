@@ -64,7 +64,7 @@ object GeminiTts {
         val (chars, reqs) = prefs.geminiToday()
         val limit = prefs.geminiDailyLimit
         // Bir parçanın ortalama süresi (dakika); 900 karakter ≈ 1 dk
-        val perReq = if (reqs > 0) chars / 900.0 / reqs else 2.5
+        val perReq = if (reqs > 0) chars / 900.0 / reqs else 5.5
         val blocked = prefs.geminiBlockedUntil
         val now = System.currentTimeMillis()
         return buildString {
@@ -117,7 +117,7 @@ $text
             val conn = URL("$BASE/models/$model:generateContent").openConnection() as HttpURLConnection
             try {
                 conn.connectTimeout = 15_000
-                conn.readTimeout = 120_000
+                conn.readTimeout = 300_000
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
