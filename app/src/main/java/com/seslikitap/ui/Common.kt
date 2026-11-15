@@ -7,6 +7,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,11 +58,15 @@ fun BookCover(
     author: String,
     modifier: Modifier = Modifier,
 ) {
-    if (coverPath != null && File(coverPath).exists()) {
+    // Dosya varlığını ekran çizilirken kontrol etmiyoruz (ana iş parçacığında disk erişimi takılma yapar);
+    // resim yüklenemezse renkli kapağa düşülür.
+    var failed by remember(coverPath) { mutableStateOf(false) }
+    if (coverPath != null && !failed) {
         AsyncImage(
             model = File(coverPath),
             contentDescription = title,
             contentScale = ContentScale.Crop,
+            onError = { failed = true },
             modifier = modifier,
         )
     } else {

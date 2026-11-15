@@ -551,11 +551,23 @@ class Player(
         val pos = PositionEntity(id, ch.index, s.blockIndex, ch.sentenceInBlock(st.sentenceIndex), System.currentTimeMillis())
         val progress = ((ch.index + st.sentenceIndex.toFloat() / ch.sentences.size.coerceAtLeast(1)) / c.chapterCount)
             .coerceIn(0f, 1f)
+        // Kaldığın cümle her seferinde kaydedilir; kitaplıktaki ilerleme yüzdesi (tüm ekranları
+        // yeniden çizdirdiği için) en fazla 30 sn'de bir, bölüm değişince ya da duraklatınca.
+        val now = System.currentTimeMillis()
+        val writeProgress = !_state.value.playing || ch.index != lastProgressChapter ||
+            now - lastProgressWrite > 30_000L
+        if (writeProgress) {
+            lastProgressWrite = now
+            lastProgressChapter = ch.index
+        }
         scope.launch(Dispatchers.IO) {
             db.positions().upsert(pos)
-            db.books().setProgress(id, progress)
+            if (writeProgress) db.books().setProgress(id, progress)
         }
     }
+
+    private var lastProgressWrite = 0L
+    private var lastProgressChapter = -1
 
     private suspend fun markFinished(id: Long) {
         db.books().setFinished(id, true)

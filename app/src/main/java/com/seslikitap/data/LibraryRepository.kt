@@ -21,6 +21,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +45,12 @@ data class ScanState(
     val lastMessage: String? = null,
 )
 
+/** İlk değeri hemen, sonrakileri en fazla [ms]'de bir (en güncel olanı) yayar. */
+fun <T> Flow<T>.throttleLatest(ms: Long): Flow<T> = conflate().transform {
+    emit(it)
+    delay(ms)
+}
+
 class LibraryRepository(
     private val context: Context,
     private val db: AppDatabase,
@@ -51,7 +60,11 @@ class LibraryRepository(
     private val _scan = MutableStateFlow(ScanState())
     val scan: StateFlow<ScanState> = _scan.asStateFlow()
 
-    val books: Flow<List<BookEntity>> = db.books().observeAll()
+    /**
+     * Tüm kitaplar. Tarama ya da dinleme sırasında veritabanı çok sık değiştiği için
+     * ekranlar en fazla ~saniyede bir güncellenir (aradaki değişiklikler birleştirilir).
+     */
+    val books: Flow<List<BookEntity>> = db.books().observeAll().throttleLatest(800)
     val folders: Flow<List<FolderEntity>> = db.folders().observeAll()
 
     fun observeBook(id: Long) = db.books().observe(id)

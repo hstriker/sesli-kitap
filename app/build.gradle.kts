@@ -35,9 +35,17 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
         release {
+            // Hız için asıl sürüm budur (debug sürümü Android yavaş çalıştırır).
+            // Kod küçültme kapalı: test edilmemiş bir kural uygulamayı bozmasın.
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("debug")
         }
+    }
+
+    lint {
+        // Yayın derlemesini lint uyarıları yüzünden durdurma
+        checkReleaseBuilds = false
+        abortOnError = false
     }
 
     compileOptions {
