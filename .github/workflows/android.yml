@@ -1,0 +1,84 @@
+name: APK derle
+
+# Her push'ta: testler çalışır ve APK derlenir.
+# main dalında: APK "Son sürüm" adlı GitHub Release'e yüklenir (sabit indirme bağlantısı).
+# Her çalışmanın sonucu ve günlüğü "ci-durum" dalına yazılır (hata ayıklama için).
+on:
+  push:
+    branches-ignore: ['ci-durum']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test ve derleme
+        run: |
+          set -o pipefail
+          chmod +x gradlew
+          ./gradlew --stacktrace :core:test :app:assembleDebug 2>&1 | tee build.log
+
+      - name: APK'yı sakla (Artifacts)
+        uses: actions/upload-artifact@v4
+        with:
+          name: SesliKitap-${{ github.run_number }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Son sürümü yayınla
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk SesliKitap.apk
+          gh release delete son-surum --yes --cleanup-tag || true
+          gh release create son-surum SesliKitap.apk \
+            --title "Son sürüm (derleme ${{ github.run_number }})" \
+            --notes "Commit: ${{ github.sha }}. Telefona indirip kurun; eski sürümün üstüne kurulur, verileriniz korunur." \
+            --target "${{ github.sha }}" --latest
+
+      - name: Derleme durumunu kaydet
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          D="$RUNNER_TEMP/durum"
+          rm -rf "$D" && mkdir -p "$D"
+          {
+            echo "sonuc=${{ job.status }}"
+            echo "commit=${{ github.sha }}"
+            echo "dal=${{ github.ref_name }}"
+            echo "calisma=${{ github.run_number }}"
+            echo "adres=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo "zaman=$(date -u +%FT%TZ)"
+          } > "$D/durum.txt"
+          if [ -f build.log ]; then
+            sed 's/\x1b\[[0-9;]*m//g' build.log | tail -n 800 > "$D/build-log.txt"
+            grep -nE '^e: |error:|FAILED|What went wrong|Exception|expected:<' build.log | head -n 200 > "$D/hatalar.txt" || true
+          fi
+          if [ -d core/build/test-results/test ]; then
+            mkdir -p "$D/test-sonuclari" && cp core/build/test-results/test/*.xml "$D/test-sonuclari/" || true
+          fi
+          cd "$D"
+          git init -q
+          git checkout -q -b ci-durum
+          git add -A
+          git -c user.name="ci" -c user.email="ci@users.noreply.github.com" commit -qm "Derleme ${{ github.run_number }}: ${{ job.status }}"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git" ci-durum

@@ -1,0 +1,145 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
+package com.seslikitap.ui.folders
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import com.seslikitap.AppContainer
+import com.seslikitap.data.FolderEntity
+import com.seslikitap.ui.appViewModel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+
+class FoldersViewModel(container: AppContainer) : ViewModel() {
+    private val repo = container.library
+    val folders = repo.folders.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+    val counts = repo.books.map { list -> list.groupingBy { it.folderUri }.eachCount() }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyMap())
+    val scan = repo.scan
+
+    fun add(uri: android.net.Uri) = repo.addFolder(uri)
+    fun remove(uri: String) = repo.removeFolder(uri)
+    fun fullRescan() = repo.startScan(full = true)
+}
+
+@Composable
+fun FoldersScreen(onBack: () -> Unit) {
+    val vm = appViewModel { FoldersViewModel(it) }
+    val folders by vm.folders.collectAsStateWithLifecycle()
+    val counts by vm.counts.collectAsStateWithLifecycle()
+    val scan by vm.scan.collectAsStateWithLifecycle()
+    var confirmRemove by remember { mutableStateOf<FolderEntity?>(null) }
+
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) vm.add(uri)
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Kitap klasörleri") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
+                },
+            )
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { pick.launch(null) },
+                icon = { Icon(Icons.Default.Add, null) },
+                text = { Text("Klasör ekle") },
+            )
+        },
+    ) { padding ->
+        LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+            item {
+                Text(
+                    "Eklediğiniz klasörler ve tüm alt klasörleri taranır. Uygulama her açılışta yeni eklenen " +
+                        "ya da değişen kitapları otomatik bulur.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+            items(folders, key = { it.uri }) { f ->
+                ListItem(
+                    headlineContent = { Text(f.name) },
+                    supportingContent = { Text("${counts[f.uri] ?: 0} kitap") },
+                    leadingContent = { Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary) },
+                    trailingContent = {
+                        IconButton(onClick = { confirmRemove = f }) { Icon(Icons.Default.Delete, "Kaldır") }
+                    },
+                )
+                HorizontalDivider()
+            }
+            item {
+                Column(Modifier.fillMaxWidth().padding(16.dp)) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = { vm.fullRescan() }, enabled = !scan.running && folders.isNotEmpty()) {
+                        Text(if (scan.running) "Taranıyor…" else "Tüm kitapları baştan tara")
+                    }
+                    Text(
+                        "Kapak ya da başlıklarda sorun görürseniz kullanın. Okuma konumlarınız silinmez.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                    Spacer(Modifier.height(96.dp))
+                }
+            }
+        }
+    }
+
+    confirmRemove?.let { f ->
+        AlertDialog(
+            onDismissRequest = { confirmRemove = null },
+            title = { Text("Klasör kaldırılsın mı?") },
+            text = {
+                Text("\"${f.name}\" kitaplıktan kaldırılacak. Dosyalarınız silinmez, sadece uygulamadaki listeden çıkar.")
+            },
+            confirmButton = {
+                TextButton(onClick = { vm.remove(f.uri); confirmRemove = null }) { Text("Kaldır") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRemove = null }) { Text("Vazgeç") }
+            },
+        )
+    }
+}

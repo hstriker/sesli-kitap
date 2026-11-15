@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Açık kitap ve ses dalgası -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,40 C38,36 46,36 53,40 L53,72 C46,68 38,68 30,72 Z" />
+    <path
+        android:fillColor="#E8F1F2"
+        android:pathData="M55,40 C62,36 70,36 78,40 L78,72 C70,68 62,68 55,72 Z" />
+    <path
+        android:strokeColor="#F2B134"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M62,50 L62,62 M67,46 L67,66 M72,52 L72,60" />
+</vector>
