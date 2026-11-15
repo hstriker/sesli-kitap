@@ -1,0 +1,29 @@
+name: Web sürümünü yayınla
+
+# web/ klasörü değişince bilgisayar sürümünü Firebase Hosting'e yükler.
+# Gerekli: GitHub Secrets'ta FIREBASE_SERVICE_ACCOUNT (Firebase hizmet hesabı anahtarı, JSON).
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', '.github/workflows/web.yml']
+  workflow_dispatch:
+
+jobs:
+  yayinla:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Anahtar var mı?
+        id: anahtar
+        env:
+          SA: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          if [ -n "$SA" ]; then echo "var=1" >> "$GITHUB_OUTPUT"; else echo "::warning::FIREBASE_SERVICE_ACCOUNT yok; web yayını atlandı."; echo "var=0" >> "$GITHUB_OUTPUT"; fi
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        if: steps.anahtar.outputs.var == '1'
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: sesli-kitap-514818
+          entryPoint: web
+          channelId: live

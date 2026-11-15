@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sesli Kitap</title>
+  <meta name="theme-color" content="#1F4E5F">
+  <link rel="stylesheet" href="style.css">
+  <script src="jszip.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="config.js"></script>
+</head>
+<body>
+  <header class="top">
+    <button id="geri" class="ikon gizli" title="Kitaplığa dön">←</button>
+    <h1 id="baslik">Sesli Kitap</h1>
+    <input id="ara" type="search" placeholder="Kitap ara…" class="gizli">
+    <button id="giris" class="dugme">Google ile giriş</button>
+  </header>
+
+  <main>
+    <!-- Giriş / kurulum mesajları -->
+    <section id="karsilama" class="kart">
+      <h2>Sesli Kitap · Bilgisayar</h2>
+      <p>Telefondaki kitaplığın, kaldığın yerler ve favorilerin Google Drive üzerinden burada da görünür.
+        Okumaya burada devam edersen kaldığın yer telefona da geçer.</p>
+      <p class="ince">En doğal Türkçe sesler için <b>Microsoft Edge</b> tarayıcısını öneririz (Emel / Ahmet doğal sesleri).</p>
+      <p id="kurulum" class="uyari gizli"></p>
+    </section>
+
+    <!-- Kitaplık -->
+    <section id="kitaplik" class="gizli">
+      <div id="devam-bolum">
+        <h2>Kaldığın yerden devam</h2>
+        <div id="devam" class="satir"></div>
+      </div>
+      <h2 id="klasor-baslik">Klasörler</h2>
+      <nav id="yol" class="yol"></nav>
+      <div id="izgara" class="izgara"></div>
+      <p id="durum" class="ince"></p>
+    </section>
+
+    <!-- Okuyucu -->
+    <section id="okuyucu" class="gizli">
+      <div class="okuyucu-ust">
+        <select id="bolumler" title="İçindekiler"></select>
+      </div>
+      <article id="metin" class="metin"></article>
+    </section>
+  </main>
+
+  <footer id="kontroller" class="kontroller gizli">
+    <div class="bilgi"><span id="konum"></span></div>
+    <div class="dugmeler">
+      <button id="onceki-bolum" class="ikon" title="Önceki bölüm">⏮</button>
+      <button id="onceki" class="ikon" title="Önceki cümle">⏪</button>
+      <button id="oynat" class="ikon buyuk" title="Oynat / Duraklat">▶</button>
+      <button id="sonraki" class="ikon" title="Sonraki cümle">⏩</button>
+      <button id="sonraki-bolum" class="ikon" title="Sonraki bölüm">⏭</button>
+    </div>
+    <div class="ayarlar">
+      <label>Ses <select id="ses"></select></label>
+      <label>Hız <select id="hiz">
+        <option value="0.8">0,8x</option><option value="0.9">0,9x</option><option value="1" selected>1,0x</option>
+        <option value="1.1">1,1x</option><option value="1.25">1,25x</option><option value="1.5">1,5x</option>
+        <option value="1.75">1,75x</option><option value="2">2,0x</option>
+      </select></label>
+      <span id="esitleme" class="ince"></span>
+    </div>
+  </footer>
+
+  <script src="metin.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+:root {
+  --zemin: #f6f4ef;
+  --yuzey: #ffffff;
+  --yazi: #1d2427;
+  --soluk: #5b6770;
+  --ana: #1f4e5f;
+  --vurgu: #f2b134;
+  --isaret: #d8ecf2;
+  --kenar: #e2ddd3;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --zemin: #121619;
+    --yuzey: #1b2125;
+    --yazi: #e7ebee;
+    --soluk: #9aa7b0;
+    --ana: #8ccfe0;
+    --vurgu: #f2b134;
+    --isaret: #23434e;
+    --kenar: #2b3338;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  background: var(--zemin);
+  color: var(--yazi);
+  padding-bottom: 150px;
+}
+.gizli { display: none !important; }
+.top {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; background: var(--yuzey); border-bottom: 1px solid var(--kenar);
+}
+.top h1 { font-size: 20px; margin: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#ara { flex: 0 1 280px; padding: 8px 12px; border-radius: 20px; border: 1px solid var(--kenar); background: var(--zemin); color: var(--yazi); }
+main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+h2 { font-size: 17px; margin: 20px 0 10px; }
+.kart { background: var(--yuzey); border: 1px solid var(--kenar); border-radius: 14px; padding: 20px; }
+.ince { color: var(--soluk); font-size: 13px; }
+.uyari { color: #b3261e; }
+.dugme { background: var(--ana); color: var(--yuzey); border: 0; padding: 9px 16px; border-radius: 20px; cursor: pointer; font-size: 14px; }
+.ikon { background: none; border: 0; font-size: 22px; cursor: pointer; color: var(--yazi); padding: 6px 10px; border-radius: 50%; }
+.ikon:hover { background: var(--kenar); }
+.ikon.buyuk { background: var(--ana); color: var(--yuzey); font-size: 26px; width: 56px; height: 56px; }
+.satir { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 6px; }
+.izgara { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 16px; }
+.kitap, .klasor { cursor: pointer; }
+.kapak {
+  aspect-ratio: 0.68; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  padding: 10px; text-align: center; color: #fff; font-weight: 600; font-size: 13px; line-height: 1.3;
+  box-shadow: 0 1px 3px rgba(0,0,0,.2); overflow: hidden;
+}
+.klasor .kapak { background: var(--isaret); color: var(--yazi); font-size: 36px; }
+.satir .kitap { flex: 0 0 120px; }
+.ad { font-size: 13px; margin-top: 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ilerleme { height: 3px; background: var(--kenar); border-radius: 2px; margin-top: 4px; }
+.ilerleme > div { height: 3px; background: var(--ana); border-radius: 2px; }
+.yol { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; font-size: 14px; }
+.yol a { color: var(--ana); cursor: pointer; text-decoration: none; }
+.okuyucu-ust { display: flex; gap: 8px; margin-bottom: 12px; }
+#bolumler { max-width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--kenar); background: var(--yuzey); color: var(--yazi); }
+.metin { max-width: 760px; margin: 0 auto; font-size: 20px; line-height: 1.7; font-family: Georgia, "Times New Roman", serif; }
+.metin h3 { font-family: system-ui, sans-serif; margin-top: 1.4em; }
+.metin .s { cursor: pointer; border-radius: 4px; }
+.metin .s:hover { background: var(--kenar); }
+.metin .s.aktif { background: var(--isaret); }
+.kontroller {
+  position: fixed; left: 0; right: 0; bottom: 0; background: var(--yuzey); border-top: 1px solid var(--kenar);
+  padding: 8px 16px 12px; display: flex; flex-direction: column; align-items: center; gap: 4px;
+}
+.dugmeler { display: flex; align-items: center; gap: 8px; }
+.ayarlar { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; justify-content: center; font-size: 13px; }
+.ayarlar select { padding: 4px; border-radius: 6px; background: var(--zemin); color: var(--yazi); border: 1px solid var(--kenar); max-width: 260px; }
+.bilgi { font-size: 13px; color: var(--soluk); }
+@media (max-width: 600px) {
+  #ara { display: none; }
+  .metin { font-size: 18px; }
+}

@@ -19,13 +19,21 @@ Yeni sürümler eskisinin üstüne kurulur, kitaplığınız ve okuma konumları
 | 2 | Okuyucu ve seslendirme: bölümler, cümle cümle okuma, hız/ton, kalınan yer | ✅ |
 | 3 | Arka planda çalma: bildirim, kilit ekranı, Bluetooth kulaklık tuşları | ✅ |
 | 4 | Cümle vurgulama, yer imleri, uyku zamanlayıcısı, dipnot/sayfa no atlama ayarı | ✅ |
-| 5 | MP3 sesli kitap olarak dışa aktarma | ⏳ |
-| 6 | Türkçe iyileştirmeler: sayılar, tarihler, Romen rakamları, kısaltmalar | 🟡 temel hali hazır |
+| 5 | MP3 sesli kitap olarak dışa aktarma | ✅ |
+| 6 | Türkçe iyileştirmeler: sayılar, tarihler, Romen rakamları, kısaltmalar | ✅ |
+
+### Sonradan eklenenler
+Google Drive, ana sayfa, istatistik ve yıllık hedef, favoriler ve raflar, seriler, alıntı defteri, kelime anlamı (TDK),
+doğal ses (Google WaveNet), diyaloglarda farklı ses, kalan süre, uyku modunda sönme, PDF, Wi-Fi'da önceden hazırlama,
+"Nerede kalmıştık?" (Gemini), Drive yedekleme, widget, Android Auto, bilgisayar (web) sürümü.
+
+Google tarafındaki kurulum adımları: [docs/KURULUM-ADIMLARI.md](docs/KURULUM-ADIMLARI.md)
 
 ## Proje yapısı
 
 - `core/`: Android'den bağımsız Kotlin kodu: ZIP/EPUB okuma, metin çıkarma, Türkçe cümle bölme. Birim testleri burada.
 - `app/`: Android uygulaması (Kotlin, Jetpack Compose, Room). `player/` klasörü seslendirme motoru ve arka plan servisini içerir.
+- `web/`: bilgisayar sürümü (tarayıcıda çalışır, Firebase Hosting'e `web.yml` ile yüklenir).
 - `.github/workflows/android.yml`: Test + APK derleme + yayınlama. Her çalışmanın günlüğü `ci-durum` dalına yazılır.
 
 ## Sorunlu kitap bildirme
