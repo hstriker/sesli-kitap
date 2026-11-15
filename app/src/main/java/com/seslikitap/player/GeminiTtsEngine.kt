@@ -129,7 +129,7 @@ class GeminiTtsEngine(
     // ------------------------------------------------------------------ Seslendirme
 
     private fun keyFor(text: String, voice: String, narrator: Boolean): String =
-        MessageDigest.getInstance("SHA-1").digest("$voice|$narrator|$text".toByteArray())
+        MessageDigest.getInstance("SHA-1").digest("$voice|${if (narrator) GeminiTts.PROMPT_VERSION else "duz"}|$text".toByteArray())
             .joinToString("") { "%02x".format(it) }
 
     /** Parçanın sesi: önbellekte varsa o, yoksa Gemini'den; olmazsa null (telefon sesiyle okunur). */

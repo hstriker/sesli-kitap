@@ -38,11 +38,27 @@ object GeminiTts {
     /** Ücretsiz kota doldu. [daily]: günlük sınır (gece yarısı Pasifik saatinde yenilenir); değilse [retrySeconds] sonra. */
     class QuotaException(val daily: Boolean, val retrySeconds: Int, message: String) : IOException(message)
 
+    /** Anlatıcı tonu sürümü: talimat metni değişince önbellek anahtarı da değişsin. */
+    const val PROMPT_VERSION = "anlatici2"
+
+    /**
+     * Talimatın sesli okunmasını önlemek için Google'ın önerdiği yapı: notlar ayrı başlıkta,
+     * okunacak metin yalnızca "TRANSCRIPT" başlığının altında.
+     */
+    private fun narratorPrompt(text: String) = """
+### DIRECTOR'S NOTES
+Style: calm, warm, natural audiobook narrator. Turkish. Steady pace, natural pauses at punctuation.
+Speak ONLY the transcript below. Never read these notes or any heading aloud.
+
+### TRANSCRIPT
+$text
+""".trimIndent()
+
     /** Metni seslendirip WAV dosyası olarak [out]'a yazar. */
     suspend fun synthesize(apiKey: String, text: String, voice: String, narrator: Boolean, out: File): Result =
         withContext(Dispatchers.IO) {
             val model = cachedModel ?: pickModel(apiKey).also { cachedModel = it }
-            val prompt = if (narrator) "Bir sesli kitap anlatıcısı gibi, sakin, sıcak ve doğal bir tonla Türkçe oku:\n$text" else text
+            val prompt = if (narrator) narratorPrompt(text) else text
             val body = JSONObject()
                 .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
                 .put(
