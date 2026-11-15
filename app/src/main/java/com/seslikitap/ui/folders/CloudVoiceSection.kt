@@ -110,6 +110,22 @@ fun CloudVoiceSection() {
                     Text(label)
                 }
             }
+            var prefetch by remember { mutableStateOf(prefs.prefetchEnabled) }
+            Row(
+                Modifier.fillMaxWidth().clickable { prefetch = !prefetch; prefs.prefetchEnabled = prefetch }.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Wi-Fi'da önceden hazırla")
+                    Text(
+                        "Wi-Fi'dayken dinlediğin kitabın sıradaki ${prefs.prefetchChapters} bölümü önceden seslendirilip " +
+                            "telefona kaydedilir; dışarıda mobil veri harcanmaz.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = prefetch, onCheckedChange = { prefetch = it; prefs.prefetchEnabled = it })
+            }
             Text(
                 "Sesleri denemek için bir kitap açıp okuma ekranındaki ayarlardan da değiştirebilirsiniz.",
                 style = MaterialTheme.typography.bodySmall,

@@ -70,7 +70,7 @@ class CloudTtsEngine(
     @Volatile private var pitch = 1f
     @Volatile private var voice = prefs.cloudVoice
 
-    private val cacheDir = File(context.filesDir, "ses").apply { mkdirs() }
+    private val synth = CloudSynth(context, auth, prefs)
     private val tmpDir = File(context.cacheDir, "ses-gecici").apply { mkdirs() }
 
     // ------------------------------------------------------------------ SpeechEngine
@@ -188,25 +188,13 @@ class CloudTtsEngine(
     // ------------------------------------------------------------------ Seslendirme
 
     private suspend fun synthesize(text: String, voice: String, rate: Float, pitch: Float): File? {
-        val key = sha1("$voice|${"%.2f".format(Locale.US, rate)}|${"%.2f".format(Locale.US, pitch)}|$text")
-        val cached = File(cacheDir, "$key.mp3")
-        if (cached.exists() && cached.length() > 0) {
-            cached.setLastModified(System.currentTimeMillis())
-            return cached
-        }
-        val used = prefs.cloudCharsThisMonth()
-        if (used + text.length > prefs.cloudMonthlyLimit) {
+        synth.cached(text, voice, rate, pitch)?.let { return it }
+        if (!synth.hasQuotaFor(text)) {
             notice.value = "Bu ayın doğal ses kotası doldu; ay sonuna kadar telefon sesi kullanılıyor."
             return synthesizeLocal(text, rate, pitch)
         }
         return try {
-            val bytes = requestCloud(text, voice, rate, pitch)
-            prefs.addCloudChars(text.length.toLong())
-            val tmp = File(cacheDir, "$key.tmp")
-            tmp.writeBytes(bytes)
-            tmp.renameTo(cached)
-            trimCache()
-            cached
+            synth.synthesize(text, voice, rate, pitch)
         } catch (e: Exception) {
             Kayit.error("Doğal ses alınamadı", e)
             notice.value = when (e) {
@@ -215,55 +203,6 @@ class CloudTtsEngine(
             }
             synthesizeLocal(text, rate, pitch)
         }
-    }
-
-    private fun requestCloud(text: String, voice: String, rate: Float, pitch: Float): ByteArray {
-        var refresh = false
-        while (true) {
-            val token = auth.tokenBlocking(refresh)
-            val conn = URL("https://texttospeech.googleapis.com/v1/text:synthesize").openConnection() as HttpURLConnection
-            try {
-                conn.connectTimeout = 15_000
-                conn.readTimeout = 30_000
-                conn.requestMethod = "POST"
-                conn.doOutput = true
-                conn.setRequestProperty("Authorization", "Bearer $token")
-                conn.setRequestProperty("x-goog-user-project", PROJECT_ID)
-                conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-                val semitones = (12.0 * ln(pitch.toDouble()) / ln(2.0)).coerceIn(-20.0, 20.0)
-                val body = JSONObject()
-                    .put("input", JSONObject().put("text", text))
-                    .put("voice", JSONObject().put("languageCode", "tr-TR").put("name", voice))
-                    .put(
-                        "audioConfig", JSONObject()
-                            .put("audioEncoding", "MP3")
-                            .put("speakingRate", rate.toDouble().coerceIn(0.25, 4.0))
-                            .put("pitch", semitones)
-                    )
-                conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
-                val code = conn.responseCode
-                if (code == 200) {
-                    val json = JSONObject(conn.inputStream.bufferedReader().readText())
-                    return Base64.decode(json.getString("audioContent"), Base64.DEFAULT)
-                }
-                val err = conn.errorStream?.bufferedReader()?.readText().orEmpty()
-                Kayit.log("Doğal ses HTTP $code: ${err.take(300).replace('\n', ' ')}")
-                if (code == 401 && !refresh) { refresh = true; continue }
-                throw IOException(explain(code, err))
-            } finally {
-                conn.disconnect()
-            }
-        }
-    }
-
-    private fun explain(code: Int, body: String): String = when {
-        body.contains("BILLING_DISABLED") || body.contains("billing", ignoreCase = true) ->
-            "Google Cloud projesinde faturalandırma açık değil"
-        body.contains("SERVICE_DISABLED") || body.contains("has not been used") ->
-            "Google Cloud'da \"Cloud Text-to-Speech API\" etkinleştirilmemiş"
-        code == 403 -> "Google erişimi reddetti (403)"
-        code == 429 -> "Google çok fazla istek dedi (429)"
-        else -> "Google hatası ($code)"
     }
 
     // ------------------------------------------------------------------ Telefon sesine geri düşme
@@ -309,26 +248,9 @@ class CloudTtsEngine(
         return if (ok && file.exists() && file.length() > 44) file else null
     }
 
-    // ------------------------------------------------------------------ Önbellek
-
-    private fun trimCache() {
-        val files = cacheDir.listFiles { f -> f.name.endsWith(".mp3") } ?: return
-        var total = files.sumOf { it.length() }
-        if (total <= MAX_CACHE_BYTES) return
-        for (f in files.sortedBy { it.lastModified() }) {
-            total -= f.length()
-            f.delete()
-            if (total <= MAX_CACHE_BYTES * 0.8) break
-        }
-    }
-
-    private fun sha1(s: String) = MessageDigest.getInstance("SHA-1").digest(s.toByteArray())
-        .joinToString("") { "%02x".format(it) }
-
     companion object {
-        const val PROJECT_ID = "sesli-kitap-514818"
+        const val PROJECT_ID = CloudSynth.PROJECT_ID
         const val DEFAULT_VOICE = "tr-TR-Wavenet-E"
-        private const val MAX_CACHE_BYTES = 400L * 1024 * 1024
 
         /** Google'ın Türkçe WaveNet sesleri. */
         val VOICES = listOf(

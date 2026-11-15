@@ -112,6 +112,15 @@ class Prefs(context: Context) {
         get() = sp.getInt("yearly_goal", 12)
         set(v) = sp.edit().putInt("yearly_goal", v).apply()
 
+    /** Doğal seste Wi-Fi'dayken sıradaki bölümleri önceden seslendir. */
+    var prefetchEnabled: Boolean
+        get() = sp.getBoolean("prefetch", true)
+        set(v) = sp.edit().putBoolean("prefetch", v).apply()
+
+    var prefetchChapters: Int
+        get() = sp.getInt("prefetch_chapters", 3)
+        set(v) = sp.edit().putInt("prefetch_chapters", v).apply()
+
     var speechRate: Float
         get() = sp.getFloat("speech_rate", 1f)
         set(v) = sp.edit().putFloat("speech_rate", v).apply()

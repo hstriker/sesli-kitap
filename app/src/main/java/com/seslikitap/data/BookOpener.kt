@@ -9,6 +9,7 @@ import android.os.ParcelFileDescriptor
 import com.seslikitap.Kayit
 import com.seslikitap.container
 import com.seslikitap.core.BlockKind
+import com.seslikitap.drive.DriveCache
 import com.seslikitap.core.ChapterText
 import com.seslikitap.core.EpubBook
 import com.seslikitap.core.EpubParser

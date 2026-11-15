@@ -50,6 +50,8 @@ import com.seslikitap.data.BookStatus
 import com.seslikitap.ui.BookCover
 import com.seslikitap.ui.appViewModel
 import com.seslikitap.ui.formatSize
+import com.seslikitap.container
+import androidx.compose.runtime.setValue
 
 @Composable
 fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onListen: () -> Unit) {
@@ -137,6 +139,7 @@ fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onListen: () -> Unit) {
                 }
             }
             item { ShelfSection(e.id) }
+            item { ExportButton(e.id, e.title) }
             val err = loadError ?: if (e.status == BookStatus.DRM) e.errorMessage else null
             if (err != null) {
                 item {
@@ -232,5 +235,58 @@ fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onListen: () -> Unit) {
                 }
             }
         }
+    }
+}
+
+/** "MP3 olarak kaydet": doğal sesle bölüm bölüm MP3 sesli kitap. */
+@Composable
+private fun ExportButton(bookId: Long, title: String) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val container = context.container
+    var ask by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    val pick = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            } catch (_: Exception) {}
+            com.seslikitap.player.ExportWorker.enqueue(context, bookId, uri)
+            android.widget.Toast.makeText(context, "Kaydetme başladı; ilerlemeyi bildirimde görebilirsiniz.", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+    androidx.compose.material3.OutlinedButton(
+        onClick = { ask = true },
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+    ) { Text("MP3 sesli kitap olarak kaydet") }
+
+    if (ask) {
+        val prefs = container.prefs
+        val cloud = prefs.voiceMode == "cloud"
+        val chars = com.seslikitap.player.ChapterLengthStore.load(context, bookId)?.sum()?.toLong()
+        val left = (prefs.cloudMonthlyLimit - prefs.cloudCharsThisMonth()).coerceAtLeast(0)
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { ask = false },
+            title = { Text("MP3 olarak kaydet") },
+            text = {
+                Text(
+                    if (!cloud) "MP3 kaydı doğal sesle yapılır. Önce Ayarlar → Doğal ses'i açın."
+                    else buildString {
+                        append("\"$title\" bölüm bölüm MP3 dosyalarına kaydedilecek. Seçeceğiniz klasörde kitap adıyla bir klasör açılır.\n\n")
+                        if (chars != null) append("Kitap yaklaşık ${chars / 1000} bin karakter. ")
+                        append("Bu ay kalan doğal ses kotası: ${left / 1000} bin karakter.")
+                        if (chars != null && chars > left) append("\n\nKota bu kitaba yetmeyebilir; kota dolunca kayıt durur, gelecek ay kaldığı yerden devam edebilirsiniz.")
+                        append("\n\nDaha önce dinlediğiniz bölümler tekrar ücretlendirilmez.")
+                    }
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.TextButton(enabled = cloud, onClick = { ask = false; pick.launch(null) }) { Text("Klasör seç ve başla") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { ask = false }) { Text("Vazgeç") } },
+        )
     }
 }

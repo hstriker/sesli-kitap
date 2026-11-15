@@ -63,6 +63,15 @@ data class PlayerState(
     val active get() = bookId != null
 }
 
+/** Seslendirme motoruna gidecek metin (ekrandaki metin değişmez). Önceden hazırlama da aynısını kullanır. */
+fun spokenTextOf(ch: Chapter, i: Int, normalize: Boolean): String {
+    var t = ch.text(i)
+    if (normalize) t = TurkishNormalizer.normalize(t)
+    val block = ch.blocks[ch.sentences[i].blockIndex]
+    if (block.kind == BlockKind.HEADING && t.isNotEmpty() && t.last().isLetterOrDigit()) t += "."
+    return t
+}
+
 /**
  * Uygulama genelinde tek oynatıcı. Ekran ve arka plan servisi aynı örneği kullanır.
  * Tüm durum değişiklikleri ana iş parçacığında yapılır.
@@ -259,6 +268,8 @@ class Player(
         }
         // Sonraki bölümü önceden hazırla
         scope.launch(Dispatchers.IO) { if (index + 1 < c.chapterCount) runCatching { c.chapter(index + 1) } }
+        // Doğal seste: Wi-Fi'dayken sıradaki bölümleri önceden seslendir
+        if (prefs.voiceMode == "cloud" && prefs.prefetchEnabled) PrefetchWorker.enqueue(context, c.bookId)
     }
 
     // ------------------------------------------------------------------ Dinleme süresi
@@ -370,13 +381,7 @@ class Player(
         }
     }
 
-    private fun spokenText(ch: Chapter, i: Int): String {
-        var t = ch.text(i)
-        if (prefs.normalizeText) t = TurkishNormalizer.normalize(t)
-        val block = ch.blocks[ch.sentences[i].blockIndex]
-        if (block.kind == BlockKind.HEADING && t.isNotEmpty() && t.last().isLetterOrDigit()) t += "."
-        return t
-    }
+    private fun spokenText(ch: Chapter, i: Int): String = spokenTextOf(ch, i, prefs.normalizeText)
 
     private fun utteranceId(chapter: Int, sentence: Int) = "$generation:$chapter:$sentence"
 
