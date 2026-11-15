@@ -85,7 +85,7 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
 
     init {
         // Açılışta hızlı artımlı tarama: sadece yeni/değişen dosyalar okunur.
-        repo.startScan()
+        repo.autoScan()
     }
 
     fun setSort(s: SortOrder) {

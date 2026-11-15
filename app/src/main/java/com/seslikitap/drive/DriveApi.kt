@@ -87,26 +87,88 @@ class DriveApi(private val auth: DriveAuth) {
         )
     }
 
-    /** Klasörü ve tüm alt klasörlerini dolaşıp EPUB'ları bulur. */
-    fun listEpubsRecursive(rootId: String, onProgress: (folders: Int, books: Int) -> Unit = { _, _ -> }): List<DriveBook> {
-        val result = ArrayList<DriveBook>()
-        val visited = HashSet<String>()
-        val stack = ArrayDeque<Pair<String, String>>()
-        stack.add(rootId to "")
-        var folders = 0
-        while (stack.isNotEmpty()) {
-            val (id, rel) = stack.removeLast()
-            if (!visited.add(id)) continue
-            folders++
-            for (item in listChildren(id)) {
-                when {
-                    item.isFolder -> stack.add(item.id to "$rel${item.name}/")
-                    item.isEpub && item.size != 0L -> result.add(DriveBook(item, rel))
-                }
-            }
-            onProgress(folders, result.size)
+    /**
+     * Seçilen klasörün (alt klasörler dahil) altındaki bütün EPUB'lar.
+     * Klasörleri tek tek gezmek yerine Drive'a iki toplu sorgu atılır (tüm klasörler, tüm EPUB'lar);
+     * hangi kitabın seçilen klasörün altında olduğu telefonda hesaplanır. Büyük arşivlerde çok daha hızlıdır.
+     */
+    fun listEpubsUnder(rootId: String, onProgress: (String) -> Unit = {}): List<DriveBook> {
+        val root = if (rootId == "root") rootFolderId() else rootId
+
+        onProgress("Drive klasörleri okunuyor…")
+        val folders = HashMap<String, Pair<String, List<String>>>() // id -> (ad, üst klasörler)
+        query(
+            "mimeType = '${DriveItem.FOLDER_MIME}' and trashed = false",
+            "nextPageToken,files(id,name,parents)",
+        ) { f ->
+            folders[f.getString("id")] = f.optString("name") to parents(f)
+            if (folders.size % 1000 == 0) onProgress("Drive klasörleri okunuyor… (${folders.size})")
         }
-        return result
+
+        onProgress("Drive'daki kitaplar aranıyor…")
+        val files = ArrayList<Pair<DriveItem, List<String>>>()
+        query(
+            "(mimeType = 'application/epub+zip' or name contains 'epub') and trashed = false and " +
+                "mimeType != '${DriveItem.FOLDER_MIME}'",
+            "nextPageToken,files(id,name,mimeType,size,modifiedTime,parents)",
+        ) { f ->
+            val item = DriveItem(
+                id = f.getString("id"),
+                name = f.optString("name"),
+                mimeType = f.optString("mimeType"),
+                size = f.optString("size").toLongOrNull() ?: -1L,
+                modified = parseTime(f.optString("modifiedTime")),
+            )
+            if (item.isEpub && item.size != 0L) files.add(item to parents(f))
+            if (files.size % 500 == 0) onProgress("Drive'daki kitaplar aranıyor… (${files.size})")
+        }
+
+        // Klasör -> seçilen köke göre yol (kökün altında değilse null). Sonuçlar önbelleğe alınır.
+        val pathCache = HashMap<String, String?>()
+        pathCache[root] = ""
+        fun pathOf(folderId: String, depth: Int = 0): String? {
+            if (pathCache.containsKey(folderId)) return pathCache[folderId]
+            if (depth > 64) return null
+            val (name, ps) = folders[folderId] ?: return null.also { pathCache[folderId] = null }
+            var result: String? = null
+            for (p in ps) {
+                val parentPath = pathOf(p, depth + 1)
+                if (parentPath != null) { result = "$parentPath$name/"; break }
+            }
+            pathCache[folderId] = result
+            return result
+        }
+
+        val out = ArrayList<DriveBook>()
+        val seen = HashSet<String>()
+        for ((item, ps) in files) {
+            val rel = ps.firstNotNullOfOrNull { pathOf(it) } ?: continue
+            if (seen.add(item.id)) out.add(DriveBook(item, rel))
+        }
+        onProgress("${out.size} kitap bulundu")
+        return out
+    }
+
+    private fun rootFolderId(): String =
+        JSONObject(String(request("$BASE/files/root?fields=id"), Charsets.UTF_8)).getString("id")
+
+    private fun parents(f: JSONObject): List<String> {
+        val arr = f.optJSONArray("parents") ?: return emptyList()
+        return (0 until arr.length()).map { arr.getString(it) }
+    }
+
+    /** Sayfalı Drive sorgusu; her dosya için [each] çağrılır. */
+    private fun query(q: String, fields: String, each: (JSONObject) -> Unit) {
+        var pageToken: String? = null
+        do {
+            val url = "$BASE/files?q=${enc(q)}&fields=${enc(fields)}&pageSize=1000" +
+                "&supportsAllDrives=true&includeItemsFromAllDrives=true" +
+                (pageToken?.let { "&pageToken=${enc(it)}" } ?: "")
+            val json = JSONObject(String(request(url), Charsets.UTF_8))
+            val arr = json.optJSONArray("files")
+            if (arr != null) for (i in 0 until arr.length()) each(arr.getJSONObject(i))
+            pageToken = json.optString("nextPageToken").ifEmpty { null }
+        } while (pageToken != null)
     }
 
     /** Dosyanın [start]'tan itibaren [length] baytı. */

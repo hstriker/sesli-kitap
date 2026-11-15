@@ -84,4 +84,7 @@ dependencies {
 
     // Google Drive erişimi (yalnızca okuma izni)
     implementation("com.google.android.gms:play-services-auth:21.2.0")
+
+    // Arka planda kitaplık taraması
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 }

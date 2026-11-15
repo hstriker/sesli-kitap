@@ -5,7 +5,9 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
+import com.seslikitap.Prefs
 import com.seslikitap.container
+import kotlinx.coroutines.sync.Mutex
 import com.seslikitap.core.EpubBook
 import com.seslikitap.drive.DriveAuthException
 import com.seslikitap.drive.DriveCache
@@ -43,10 +45,10 @@ class LibraryRepository(
     private val context: Context,
     private val db: AppDatabase,
     private val scope: CoroutineScope,
+    private val prefs: Prefs,
 ) {
     private val _scan = MutableStateFlow(ScanState())
     val scan: StateFlow<ScanState> = _scan.asStateFlow()
-    private var scanJob: Job? = null
 
     val books: Flow<List<BookEntity>> = db.books().observeAll()
     val folders: Flow<List<FolderEntity>> = db.folders().observeAll()
@@ -124,27 +126,54 @@ class LibraryRepository(
         val relativePath: String,
     )
 
-    /** Tüm klasörleri tarar. Zaten tarama sürüyorsa bir şey yapmaz. [full]: değişmemiş kitapları da yeniden oku. */
-    fun startScan(full: Boolean = false) {
-        if (scanJob?.isActive == true) return
-        scanJob = scope.launch(Dispatchers.IO) {
+    /**
+     * Taramayı arka plan görevi olarak başlatır (uygulama kapansa da sürer).
+     * [full]: değişmemiş kitapları da yeniden oku. [includeDrive]: Drive klasörlerini de tara.
+     */
+    fun startScan(full: Boolean = false, includeDrive: Boolean = true) {
+        ScanWorker.enqueue(context, full, includeDrive)
+    }
+
+    /** Açılışta: telefondaki klasörler her zaman, Drive en fazla 12 saatte bir. */
+    fun autoScan() {
+        val driveDue = System.currentTimeMillis() - prefs.lastDriveScan > DRIVE_AUTO_INTERVAL
+        startScan(full = false, includeDrive = driveDue)
+    }
+
+    private val scanMutex = Mutex()
+
+    /** Asıl tarama (ScanWorker çağırır). Aynı anda tek tarama çalışır. */
+    suspend fun runScan(full: Boolean, includeDrive: Boolean) {
+        if (!scanMutex.tryLock()) return
+        try {
+            withContext(Dispatchers.IO) { doScan(full, includeDrive) }
+        } finally {
+            scanMutex.unlock()
+        }
+    }
+
+    private suspend fun doScan(full: Boolean, includeDrive: Boolean) {
+        run {
             _scan.value = ScanState(running = true, phase = "Klasörler okunuyor…")
             var added = 0
             var failed = 0
             var message: String? = null
             try {
-                val folders = db.folders().all()
+                val folders = db.folders().all().filter { includeDrive || !DriveUri.isDrive(it.uri) }
+                var driveOk = true
                 for (folder in folders) {
                     val isDrive = DriveUri.isDrive(folder.uri)
                     val found = try {
                         if (isDrive) listDrive(folder) else listEpubs(Uri.parse(folder.uri))
                     } catch (e: DriveAuthException) {
                         message = e.message
+                        driveOk = false
                         continue
                     } catch (e: SecurityException) {
                         message = "\"${folder.name}\" klasörüne erişim izni kayboldu. Klasörü kaldırıp yeniden ekleyin."
                         continue
                     } catch (e: Exception) {
+                        if (isDrive) driveOk = false
                         Log.w(TAG, "Klasör listelenemedi", e)
                         message = "\"${folder.name}\" klasörü okunamadı: ${e.message}"
                         continue
@@ -198,7 +227,9 @@ class LibraryRepository(
 
                     // Klasörden silinmiş kitaplar
                     val foundUris = found.mapTo(HashSet()) { it.uri }
-                    val gone = existing.values.filter { it.uri !in foundUris }
+                    // Drive boş liste döndürdüyse (geçici sorun olabilir) kitapları silme.
+                    val gone = if (isDrive && found.isEmpty()) emptyList()
+                    else existing.values.filter { it.uri !in foundUris }
                     gone.forEach { b ->
                         b.coverPath?.let { File(it).delete() }
                         if (DriveUri.isDrive(b.uri)) DriveCache.delete(context, DriveUri.id(b.uri))
@@ -208,6 +239,9 @@ class LibraryRepository(
                         db.bookmarks().deleteForBooks(it)
                         db.books().delete(it)
                     }
+                }
+                if (includeDrive && driveOk && folders.any { DriveUri.isDrive(it.uri) }) {
+                    prefs.lastDriveScan = System.currentTimeMillis()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Tarama hatası", e)
@@ -298,8 +332,8 @@ class LibraryRepository(
     }
 
     private fun listDrive(folder: FolderEntity): List<FoundFile> =
-        context.container.drive.listEpubsRecursive(DriveUri.id(folder.uri)) { folders, books ->
-            _scan.update { it.copy(phase = "${folder.name}: $folders klasör, $books kitap bulundu…") }
+        context.container.drive.listEpubsUnder(DriveUri.id(folder.uri)) { msg ->
+            _scan.update { it.copy(phase = "${folder.name}: $msg") }
         }.map { FoundFile(DriveUri.file(it.item.id), it.item.name, it.item.size, it.item.modified, it.relativePath) }
 
     /** Klasör ağacını DocumentsContract ile dolaşır (DocumentFile'dan çok daha hızlı). */
@@ -356,5 +390,6 @@ class LibraryRepository(
         private const val TAG = "LibraryRepository"
         private const val PARALLELISM = 4
         private const val DRIVE_PARALLELISM = 6
+        private const val DRIVE_AUTO_INTERVAL = 12 * 60 * 60 * 1000L
     }
 }

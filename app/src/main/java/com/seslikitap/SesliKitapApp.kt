@@ -26,8 +26,8 @@ class AppContainer(context: Context) {
     val appContext: Context = context.applicationContext
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val db: AppDatabase = AppDatabase.build(context)
-    val library = LibraryRepository(context, db, appScope)
     val prefs = Prefs(context)
+    val library = LibraryRepository(context, db, appScope, prefs)
     val player by lazy { Player(appContext, db, prefs) }
     val driveAuth by lazy { DriveAuth(appContext) }
     val drive by lazy { DriveApi(driveAuth) }
@@ -69,6 +69,11 @@ class Prefs(context: Context) {
     var normalizeText: Boolean
         get() = sp.getBoolean("normalize_text", true)
         set(v) = sp.edit().putBoolean("normalize_text", v).apply()
+
+    /** Son başarılı Drive taramasının zamanı (epoch ms). */
+    var lastDriveScan: Long
+        get() = sp.getLong("last_drive_scan", 0L)
+        set(v) = sp.edit().putLong("last_drive_scan", v).apply()
 
     var readerFontSize: Float
         get() = sp.getFloat("reader_font_size", 18f)
