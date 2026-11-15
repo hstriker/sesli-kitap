@@ -18,7 +18,8 @@ import com.seslikitap.core.TurkishNormalizer
 import com.seslikitap.data.AppDatabase
 import com.seslikitap.data.BookStatus
 import com.seslikitap.data.BookmarkEntity
-import com.seslikitap.data.EpubOpener
+import com.seslikitap.data.BookOpener
+import com.seslikitap.data.PdfBooks
 import com.seslikitap.data.PositionEntity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -194,13 +195,15 @@ class Player(
                     ?: throw IllegalStateException("Kitap bulunamadı")
                 if (entity.status == BookStatus.DRM) throw IllegalStateException("Bu kitap DRM ile korunuyor, seslendirilemez")
                 val newContent = withContext(Dispatchers.IO) {
-                    val zip = EpubOpener.open(context, Uri.parse(entity.uri))
-                    try {
-                        val epub = EpubParser.parse(zip, entity.fileName, includeToc = true)
-                        BookContent(bookId, epub, zip, ExtractOptions(prefs.skipFootnotes, prefs.skipPageNumbers))
-                    } catch (e: Throwable) {
-                        zip.close(); throw e
+                    val opened = BookOpener.open(context, entity.uri, entity.fileName)
+                    // PDF'in kapağı taramada üretilemediyse (Drive) şimdi ilk sayfadan üret
+                    opened.localPdf?.let { f ->
+                        if (entity.coverPath == null || entity.chapterCount == 0) {
+                            val cover = entity.coverPath ?: PdfBooks.renderCover(context, f, entity.uri)
+                            db.books().setCoverAndChapters(bookId, cover, opened.book.spine.size)
+                        }
                     }
+                    BookContent(bookId, opened.book, opened.source, ExtractOptions(prefs.skipFootnotes, prefs.skipPageNumbers))
                 }
                 content?.close()
                 content = newContent
@@ -217,7 +220,11 @@ class Player(
                     } else 0 to 0
                 }
                 val startChapter = withContext(Dispatchers.IO) { newContent.nextNonEmpty(ch) }
-                    ?: throw IllegalStateException("Kitapta seslendirilecek metin bulunamadı")
+                    ?: throw IllegalStateException(
+                        if (BookOpener.isPdf(entity.fileName))
+                            "Bu PDF'te okunabilir yazı bulunamadı. Taranmış (sayfa fotoğrafı) bir PDF olabilir."
+                        else "Kitapta seslendirilecek metin bulunamadı"
+                    )
                 _state.update {
                     it.copy(
                         bookTitle = entity.title, author = entity.author, coverPath = entity.coverPath,

@@ -168,6 +168,9 @@ interface BookDao {
     )
     suspend fun nextInSeries(series: String, index: Double): BookEntity?
 
+    @Query("UPDATE books SET coverPath = :coverPath, chapterCount = :chapters WHERE id = :id")
+    suspend fun setCoverAndChapters(id: Long, coverPath: String?, chapters: Int)
+
     @Query("UPDATE books SET favorite = :favorite WHERE id = :id")
     suspend fun setFavorite(id: Long, favorite: Boolean)
 

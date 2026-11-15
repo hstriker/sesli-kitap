@@ -93,6 +93,9 @@ dependencies {
     // Google Drive erişimi (yalnızca okuma izni)
     implementation("com.google.android.gms:play-services-auth:21.2.0")
 
+    // PDF metin çıkarma
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
     // Arka planda kitaplık taraması
     implementation("androidx.work:work-runtime-ktx:2.9.1")
 }

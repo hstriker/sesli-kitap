@@ -26,6 +26,9 @@ data class DriveItem(
 ) {
     val isFolder get() = mimeType == FOLDER_MIME
     val isEpub get() = mimeType == "application/epub+zip" || name.endsWith(".epub", ignoreCase = true)
+    val isPdf get() = mimeType == "application/pdf" || name.endsWith(".pdf", ignoreCase = true)
+    /** Kitaplığa alınan dosyalar: EPUB ve PDF. */
+    val isBook get() = isEpub || isPdf
 
     companion object {
         const val FOLDER_MIME = "application/vnd.google-apps.folder"
@@ -109,7 +112,8 @@ class DriveApi(private val auth: DriveAuth) {
         onProgress("Drive'daki kitaplar aranıyor…")
         val files = ArrayList<Pair<DriveItem, List<String>>>()
         query(
-            "(mimeType = 'application/epub+zip' or name contains 'epub') and trashed = false and " +
+            "(mimeType = 'application/epub+zip' or mimeType = 'application/pdf' or name contains 'epub') " +
+                "and trashed = false and " +
                 "mimeType != '${DriveItem.FOLDER_MIME}'",
             "nextPageToken,files(id,name,mimeType,size,modifiedTime,parents)",
         ) { f ->
@@ -120,7 +124,7 @@ class DriveApi(private val auth: DriveAuth) {
                 size = f.optString("size").toLongOrNull() ?: -1L,
                 modified = parseTime(f.optString("modifiedTime")),
             )
-            if (item.isEpub && item.size != 0L) files.add(item to parents(f))
+            if (item.isBook && item.size != 0L) files.add(item to parents(f))
             if (files.size % 500 == 0) onProgress("Drive'daki kitaplar aranıyor… (${files.size})")
         }
 
@@ -171,7 +175,7 @@ class DriveApi(private val auth: DriveAuth) {
                     for (item in listChildren(id)) {
                         when {
                             item.isFolder -> submit(item.id, "$rel${item.name}/")
-                            item.isEpub && item.size != 0L -> result.add(DriveBook(item, rel))
+                            item.isBook && item.size != 0L -> result.add(DriveBook(item, rel))
                         }
                     }
                     val n = foldersDone.incrementAndGet()

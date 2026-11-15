@@ -18,6 +18,7 @@ class SesliKitapApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Kayit.init(this)
+        try { com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext) } catch (_: Throwable) {}
         container = AppContainer(this)
     }
 }

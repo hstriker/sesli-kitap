@@ -9,7 +9,7 @@ import com.seslikitap.core.EpubBook
 import com.seslikitap.core.SentenceSplitter
 import com.seslikitap.data.BookEntity
 import com.seslikitap.data.BookStatus
-import com.seslikitap.data.EpubOpener
+import com.seslikitap.data.BookOpener
 import com.seslikitap.core.ExtractOptions
 import com.seslikitap.player.BookContent
 import com.seslikitap.player.ChapterLengthStore
@@ -56,10 +56,9 @@ class BookDetailViewModel(private val container: AppContainer, private val bookI
                 // Tahmini dinleme süresi: bölüm uzunlukları kayıtlı değilse arka planda hesaplanır
                 val lens = withContext(Dispatchers.IO) {
                     ChapterLengthStore.load(context, e.id)?.takeIf { it.size == b.spine.size } ?: runCatching {
-                        EpubOpener.open(context, Uri.parse(e.uri)).let { zip ->
-                            BookContent(e.id, b, zip, ExtractOptions(container.prefs.skipFootnotes, container.prefs.skipPageNumbers))
-                                .use { content -> ChapterLengthStore.getOrCompute(context, content) }
-                        }
+                        val opened = BookOpener.open(context, e.uri, e.fileName)
+                        BookContent(e.id, opened.book, opened.source, ExtractOptions(container.prefs.skipFootnotes, container.prefs.skipPageNumbers))
+                            .use { content -> ChapterLengthStore.getOrCompute(context, content) }
                     }.getOrNull()
                 }
                 if (lens != null) totalMs.value = container.player.estimatedTotalMs(lens)
@@ -76,9 +75,9 @@ class BookDetailViewModel(private val container: AppContainer, private val bookI
         viewModelScope.launch {
             preview.value = withContext(Dispatchers.IO) {
                 try {
-                    EpubOpener.open(context, Uri.parse(e.uri)).use { zip ->
-                        val bytes = zip.readOrThrow(b.spine[spineIndex])
-                        val chapter = ChapterTextExtractor.extract(bytes)
+                    BookOpener.open(context, e.uri, e.fileName).source.use { src ->
+                        val chapter = src.chapterText(spineIndex, ExtractOptions(container.prefs.skipFootnotes, container.prefs.skipPageNumbers))
+                            ?: throw java.io.IOException("Bölüm okunamadı")
                         val sentences = chapter.blocks.flatMap { SentenceSplitter.sentences(it.text) }
                         ChapterPreview(spineIndex, title, sentences)
                     }

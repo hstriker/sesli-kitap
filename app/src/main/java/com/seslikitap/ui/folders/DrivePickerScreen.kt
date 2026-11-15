@@ -147,7 +147,7 @@ class DrivePickerViewModel(private val container: AppContainer) : ViewModel() {
                     it.copy(
                         loading = false,
                         folders = items.filter { i -> i.isFolder }.distinctBy { i -> i.id },
-                        epubCount = items.count { i -> i.isEpub },
+                        epubCount = items.count { i -> i.isBook },
                     )
                 }
             } catch (e: Exception) {
@@ -280,8 +280,8 @@ fun DrivePickerScreen(onBack: () -> Unit, onAdded: () -> Unit) {
                     Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(16.dp)) {
                         val name = ui.path.last().name
                         Text(
-                            if (ui.epubCount > 0) "Bu klasörde ${ui.epubCount} EPUB var. Alt klasörler de taranır."
-                            else "Bu klasörde doğrudan EPUB yok; alt klasörler de taranır.",
+                            if (ui.epubCount > 0) "Bu klasörde ${ui.epubCount} kitap (EPUB/PDF) var. Alt klasörler de taranır."
+                            else "Bu klasörde doğrudan kitap yok; alt klasörler de taranır.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )

@@ -358,6 +358,7 @@ class LibraryRepository(
     }
 
     private fun processFileInner(folderUri: String, f: FoundFile, old: BookEntity?, now: Long): BookEntity? {
+        if (BookOpener.isPdf(f.name)) return processPdf(folderUri, f, old, now)
         val fallbackTitle = f.name.substringBeforeLast('.')
         var book: EpubBook? = null
         var coverPath: String? = null
@@ -437,6 +438,32 @@ class LibraryRepository(
         return books.map { FoundFile(DriveUri.file(it.item.id), it.item.name, it.item.size, it.item.modified, it.relativePath) }
     }
 
+    /**
+     * PDF'ler taramada açılmaz (ağır olabilir): başlık dosya adından; telefondaki PDF'lerde kapak ve
+     * sayfa sayısı hemen, Drive'dakilerde kitap ilk açıldığında üretilir.
+     */
+    private fun processPdf(folderUri: String, f: FoundFile, old: BookEntity?, now: Long): BookEntity {
+        var cover: String? = old?.coverPath
+        var pages = old?.chapterCount ?: 0
+        if (!DriveUri.isDrive(f.uri)) {
+            try {
+                val (n, c) = PdfBooks.scanLocal(context, Uri.parse(f.uri), f.uri)
+                pages = n
+                if (c != null) cover = c
+            } catch (e: Throwable) {
+                Kayit.error("PDF taranamadı: ${f.name}", e)
+            }
+        }
+        val title = TurkishText.cleanMeta(f.name.substringBeforeLast('.'))
+        return BookEntity(
+            uri = f.uri, folderUri = folderUri, fileName = f.name, relativePath = f.relativePath,
+            title = title, author = "", language = null, sizeBytes = f.size, lastModified = f.lastModified,
+            coverPath = cover, chapterCount = pages, status = BookStatus.OK, errorMessage = null,
+            searchKey = TurkishText.searchKey("$title ${f.name} ${f.relativePath} pdf"),
+            parserVersion = EpubParser.VERSION, addedAt = old?.addedAt ?: now,
+        )
+    }
+
     /** Klasör ağacını DocumentsContract ile dolaşır (DocumentFile'dan çok daha hızlı). */
     private fun listEpubs(treeUri: Uri): List<FoundFile> {
         val resolver = context.contentResolver
@@ -463,7 +490,9 @@ class LibraryRepository(
                     val mime = c.getString(2) ?: ""
                     if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
                         if (!name.startsWith(".")) stack.add(id to "$rel$name/")
-                    } else if (name.endsWith(".epub", ignoreCase = true) || mime == "application/epub+zip") {
+                    } else if (name.endsWith(".epub", ignoreCase = true) || mime == "application/epub+zip" ||
+                        name.endsWith(".pdf", ignoreCase = true)
+                    ) {
                         val size = if (c.isNull(3)) -1L else c.getLong(3)
                         val lm = if (c.isNull(4)) 0L else c.getLong(4)
                         result.add(
@@ -482,9 +511,7 @@ class LibraryRepository(
 
     /** Bir kitabı tam olarak (içindekilerle) açar. */
     suspend fun openBook(entity: BookEntity): EpubBook = withContext(Dispatchers.IO) {
-        EpubOpener.open(context, Uri.parse(entity.uri)).use { zip ->
-            EpubParser.parse(zip, entity.fileName, includeToc = true)
-        }
+        BookOpener.open(context, entity.uri, entity.fileName).let { o -> o.source.use { o.book } }
     }
 
     companion object {

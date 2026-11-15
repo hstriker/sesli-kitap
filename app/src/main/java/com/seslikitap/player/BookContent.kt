@@ -1,5 +1,6 @@
 package com.seslikitap.player
 
+import com.seslikitap.core.ChapterText
 import com.seslikitap.core.ChapterTextExtractor
 import com.seslikitap.core.DialogDetector
 import com.seslikitap.core.EpubBook
@@ -47,10 +48,25 @@ class Chapter(
 /**
  * Açık bir kitap. Arşivi açık tutar, bölümleri ihtiyaç oldukça yükler ve küçük bir önbellekte saklar.
  */
+/** Bir kitabın bölüm metinlerini sağlayan kaynak (EPUB ya da PDF). */
+interface ChapterSource : Closeable {
+    /** Bölümün metni; okunamazsa null. */
+    fun chapterText(index: Int, options: ExtractOptions): ChapterText?
+}
+
+class EpubChapterSource(private val zip: ZipArchive, private val epub: EpubBook) : ChapterSource {
+    override fun chapterText(index: Int, options: ExtractOptions): ChapterText? {
+        val bytes = zip.read(epub.spine[index]) ?: return null
+        return ChapterTextExtractor.extract(bytes, options)
+    }
+
+    override fun close() = zip.close()
+}
+
 class BookContent(
     val bookId: Long,
     val epub: EpubBook,
-    private val zip: ZipArchive,
+    private val source: ChapterSource,
     private val options: ExtractOptions,
 ) : Closeable {
 
@@ -72,13 +88,11 @@ class BookContent(
     }
 
     private fun load(index: Int): Chapter {
-        val bytes = zip.read(epub.spine[index])
-        if (bytes == null) return Chapter(index, chapterTitle(index), emptyList(), emptyList(), emptyMap())
         val text = try {
-            ChapterTextExtractor.extract(bytes, options)
+            source.chapterText(index, options)
         } catch (e: Throwable) {
-            return Chapter(index, chapterTitle(index), emptyList(), emptyList(), emptyMap())
-        }
+            null
+        } ?: return Chapter(index, chapterTitle(index), emptyList(), emptyList(), emptyMap())
         val sentences = ArrayList<Sentence>()
         val anchors = HashMap<String, Int>()
         val dialog = ArrayList<Boolean>()
@@ -120,7 +134,7 @@ class BookContent(
         return (first - 1) - ch.sentenceInBlock(first - 1)
     }
 
-    override fun close() = zip.close()
+    override fun close() = source.close()
 }
 
 /**
