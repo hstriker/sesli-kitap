@@ -162,6 +162,10 @@ fun FoldersScreen(onBack: (() -> Unit)?, onAddDrive: () -> Unit) {
                     Spacer(Modifier.height(16.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(16.dp))
+                    BackupSection()
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(16.dp))
                     Text("Günlük dinleme hedefi", style = MaterialTheme.typography.titleSmall)
                     Text(
                         "Ana sayfadaki halka bu hedefe göre dolar.",

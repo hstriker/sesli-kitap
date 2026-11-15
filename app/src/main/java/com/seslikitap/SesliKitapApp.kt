@@ -20,6 +20,7 @@ class SesliKitapApp : Application() {
         Kayit.init(this)
         try { com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext) } catch (_: Throwable) {}
         container = AppContainer(this)
+        if (container.prefs.autoBackup) com.seslikitap.data.BackupWorker.schedule(this)
     }
 }
 
@@ -32,6 +33,14 @@ class AppContainer(context: Context) {
     val library = LibraryRepository(context, db, appScope, prefs)
     val player by lazy { Player(appContext, db, prefs) }
     val driveAuth by lazy { DriveAuth(appContext) }
+    /** Drive'daki gizli uygulama klasörüne yedekleme izni. */
+    val backupAuth by lazy {
+        DriveAuth(
+            appContext, com.seslikitap.data.Backup.SCOPE,
+            "Drive yedeklemesi için Google bağlantısı gerekiyor: Ayarlar → Yedekleme → \"Google'a bağlan\".",
+        )
+    }
+
     /** Doğal ses (Google Cloud Text-to-Speech) izni. */
     val cloudAuth by lazy {
         DriveAuth(
@@ -125,6 +134,14 @@ class Prefs(context: Context) {
     var geminiKey: String?
         get() = sp.getString("gemini_key", null)
         set(v) = sp.edit().putString("gemini_key", v?.trim()).apply()
+
+    var autoBackup: Boolean
+        get() = sp.getBoolean("auto_backup", false)
+        set(v) = sp.edit().putBoolean("auto_backup", v).apply()
+
+    var lastBackup: Long
+        get() = sp.getLong("last_backup", 0L)
+        set(v) = sp.edit().putLong("last_backup", v).apply()
 
     var speechRate: Float
         get() = sp.getFloat("speech_rate", 1f)

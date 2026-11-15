@@ -137,6 +137,12 @@ interface BookDao {
     @Query("SELECT * FROM books WHERE folderUri = :folderUri")
     suspend fun forFolder(folderUri: String): List<BookEntity>
 
+    @Query("SELECT * FROM books")
+    suspend fun all(): List<BookEntity>
+
+    @Query("SELECT * FROM books WHERE lastOpenedAt IS NOT NULL AND status = 0 ORDER BY lastOpenedAt DESC LIMIT 1")
+    suspend fun lastOpened(): BookEntity?
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(book: BookEntity): Long
 
@@ -201,6 +207,9 @@ interface PositionDao {
     @Upsert
     suspend fun upsert(position: PositionEntity)
 
+    @Query("SELECT * FROM positions")
+    suspend fun all(): List<PositionEntity>
+
     @Query("DELETE FROM positions WHERE bookId IN (:ids)")
     suspend fun delete(ids: List<Long>)
 }
@@ -212,6 +221,9 @@ interface BookmarkDao {
 
     @Insert
     suspend fun insert(bookmark: BookmarkEntity): Long
+
+    @Query("SELECT * FROM bookmarks")
+    suspend fun all(): List<BookmarkEntity>
 
     @Query("DELETE FROM bookmarks WHERE id = :id")
     suspend fun delete(id: Long)
@@ -243,6 +255,12 @@ interface ShelfDao {
     @Query("DELETE FROM shelf_books WHERE shelfId = :shelfId AND bookId = :bookId")
     suspend fun remove(shelfId: Long, bookId: Long)
 
+    @Query("SELECT * FROM shelves")
+    suspend fun allShelves(): List<ShelfEntity>
+
+    @Query("SELECT * FROM shelf_books")
+    suspend fun allLinks(): List<ShelfBookEntity>
+
     @Query("SELECT shelfId FROM shelf_books WHERE bookId = :bookId")
     fun observeShelvesOf(bookId: Long): Flow<List<Long>>
 }
@@ -254,6 +272,9 @@ interface QuoteDao {
 
     @Insert
     suspend fun insert(quote: QuoteEntity): Long
+
+    @Query("SELECT * FROM quotes")
+    suspend fun all(): List<QuoteEntity>
 
     @Query("DELETE FROM quotes WHERE id = :id")
     suspend fun delete(id: Long)
@@ -269,6 +290,12 @@ interface ListeningDao {
 
     @Query("SELECT * FROM listening ORDER BY day")
     fun observeAll(): Flow<List<ListeningDay>>
+
+    @Query("SELECT * FROM listening")
+    suspend fun all(): List<ListeningDay>
+
+    @Upsert
+    suspend fun upsert(day: ListeningDay)
 }
 
 @Database(

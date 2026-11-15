@@ -349,6 +349,14 @@ class Player(
 
     fun toggle() = if (_state.value.playing) pause() else play()
 
+    /** En son dinlenen kitabı kaldığı yerden çalar (widget / Android Auto). Kitap yoksa false. */
+    suspend fun resumeLast(): Boolean {
+        _state.value.bookId?.let { play(); return true }
+        val last = withContext(Dispatchers.IO) { db.books().lastOpened() } ?: return false
+        open(last.id, autoPlay = true)
+        return true
+    }
+
     /** Kitabı kapatır, bildirimi kaldırır. */
     fun stop() {
         pause()

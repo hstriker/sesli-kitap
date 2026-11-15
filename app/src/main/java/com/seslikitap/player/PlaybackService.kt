@@ -15,7 +15,11 @@ import android.graphics.BitmapFactory
 import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
+import android.support.v4.media.MediaBrowserCompat
+import android.support.v4.media.MediaDescriptionCompat
 import android.support.v4.media.MediaMetadataCompat
+import androidx.media.MediaBrowserServiceCompat
+import android.os.Bundle
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
@@ -36,7 +40,7 @@ import kotlinx.coroutines.withContext
  * Seslendirme sürerken uygulamayı ön planda tutar; bildirim, kilit ekranı ve kulaklık
  * tuşlarını oynatıcıya bağlar.
  */
-class PlaybackService : Service() {
+class PlaybackService : MediaBrowserServiceCompat() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val player get() = container.player
@@ -45,6 +49,8 @@ class PlaybackService : Service() {
     private var coverPath: String? = null
     private var noisyRegistered = false
     private var foreground = false
+    private var lastWidget = ""
+    private val container get() = applicationContext.container
 
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -65,16 +71,45 @@ class PlaybackService : Service() {
                 override fun onSkipToPrevious() = player.previousSentence()
                 override fun onFastForward() = player.nextSentence()
                 override fun onRewind() = player.previousSentence()
+
+                // Android Auto: listeden seçilen kitap
+                override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
+                    mediaId?.removePrefix("book:")?.toLongOrNull()?.let { player.open(it, autoPlay = true) }
+                }
+
+                // "Hey Google, Sesli Kitap'ta Dune'u çal"
+                override fun onPlayFromSearch(query: String?, extras: Bundle?) {
+                    scope.launch {
+                        val q = com.seslikitap.core.TurkishText.searchKey(query.orEmpty())
+                        val books = withContext(Dispatchers.IO) { container.db.books().all() }
+                        val hit = if (q.isBlank()) null else books.firstOrNull { it.searchKey.contains(q) }
+                        if (hit != null) player.open(hit.id, autoPlay = true) else player.resumeLast()
+                    }
+                }
             })
             setSessionActivity(contentIntent())
             isActive = true
         }
+        sessionToken = session.sessionToken
         scope.launch {
             player.state.collect { update(it) }
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        started = true
+        // Uygulama kapalıyken widget'tan "oynat": son kitabı kaldığı yerden aç.
+        if (!player.state.value.active && intent?.action == ACTION_TOGGLE) {
+            startForegroundPlaceholder()
+            scope.launch {
+                if (!player.resumeLast()) {
+                    ServiceCompat.stopForeground(this@PlaybackService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                    foreground = false
+                    stopSelf()
+                }
+            }
+            return START_NOT_STICKY
+        }
         // startForegroundService'ten sonra 5 sn içinde startForeground çağrılmalı.
         update(player.state.value)
         when (intent?.action) {
@@ -86,7 +121,68 @@ class PlaybackService : Service() {
         return START_NOT_STICKY
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    private var started = false
+
+    private fun startForegroundPlaceholder() {
+        val n = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_stat_book)
+            .setContentTitle("Sesli Kitap")
+            .setContentText("Kaldığın yerden açılıyor…")
+            .setSilent(true)
+            .build()
+        try {
+            ServiceCompat.startForeground(
+                this, NOTIFICATION_ID, n,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK else 0,
+            )
+            foreground = true
+        } catch (e: Exception) {
+            Log.w(TAG, "Ön plana alınamadı", e)
+        }
+    }
+
+    // ------------------------------------------------------------------ Android Auto: kitap listeleri
+
+    override fun onGetRoot(clientPackageName: String, clientUid: Int, rootHints: Bundle?): BrowserRoot =
+        BrowserRoot(ROOT, null)
+
+    override fun onLoadChildren(parentId: String, result: Result<MutableList<MediaBrowserCompat.MediaItem>>) {
+        result.detach()
+        scope.launch {
+            val items = try { withContext(Dispatchers.IO) { browseItems(parentId) } } catch (e: Exception) { mutableListOf() }
+            result.sendResult(items)
+        }
+    }
+
+    private suspend fun browseItems(parentId: String): MutableList<MediaBrowserCompat.MediaItem> {
+        val books = container.db.books().all().filter { it.status == com.seslikitap.data.BookStatus.OK }
+        fun folder(id: String, title: String) = MediaBrowserCompat.MediaItem(
+            MediaDescriptionCompat.Builder().setMediaId(id).setTitle(title).build(),
+            MediaBrowserCompat.MediaItem.FLAG_BROWSABLE,
+        )
+        fun book(b: com.seslikitap.data.BookEntity) = MediaBrowserCompat.MediaItem(
+            MediaDescriptionCompat.Builder()
+                .setMediaId("book:${b.id}")
+                .setTitle(b.title)
+                .setSubtitle(b.author.ifBlank { b.relativePath.trimEnd('/') })
+                .setIconBitmap(b.coverPath?.let { p -> runCatching { BitmapFactory.decodeFile(p, BitmapFactory.Options().apply { inSampleSize = 4 }) }.getOrNull() })
+                .build(),
+            MediaBrowserCompat.MediaItem.FLAG_PLAYABLE,
+        )
+        return when (parentId) {
+            ROOT -> mutableListOf(
+                folder("devam", "Kaldığın yerden devam"),
+                folder("yarim", "Yarım kalanlar"),
+                folder("favori", "Favoriler"),
+                folder("yeni", "Son eklenenler"),
+            )
+            "devam" -> books.filter { it.lastOpenedAt != null && !it.finished }.sortedByDescending { it.lastOpenedAt }.take(1).map(::book).toMutableList()
+            "yarim" -> books.filter { it.progress > 0f && !it.finished }.sortedByDescending { it.lastOpenedAt ?: 0L }.take(30).map(::book).toMutableList()
+            "favori" -> books.filter { it.favorite }.take(50).map(::book).toMutableList()
+            "yeni" -> books.sortedByDescending { it.addedAt }.take(30).map(::book).toMutableList()
+            else -> mutableListOf()
+        }
+    }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // Uygulama son kullanılanlardan kaydırılınca: çalmıyorsa kapat.
@@ -129,6 +225,11 @@ class PlaybackService : Service() {
             }
         }
 
+        val widgetKey = "${st.bookTitle}|${st.chapterTitle}|${st.coverPath}|${st.playing}"
+        if (widgetKey != lastWidget) {
+            lastWidget = widgetKey
+            PlayerWidget.update(this, st.bookTitle, st.chapterTitle, st.coverPath, st.playing)
+        }
         session.setMetadata(
             MediaMetadataCompat.Builder()
                 .putString(MediaMetadataCompat.METADATA_KEY_TITLE, st.bookTitle)
@@ -157,6 +258,10 @@ class PlaybackService : Service() {
 
         val notification = buildNotification(st)
         try {
+            if (!foreground && !started) {
+                // Yalnızca bağlı (ör. Android Auto) iken çalma başladıysa önce servisi başlat
+                try { startService(Intent(this, PlaybackService::class.java)); started = true } catch (_: Exception) {}
+            }
             if (!foreground) {
                 ServiceCompat.startForeground(
                     this, NOTIFICATION_ID, notification,
@@ -257,7 +362,8 @@ class PlaybackService : Service() {
         private const val TAG = "PlaybackService"
         private const val CHANNEL_ID = "playback"
         private const val NOTIFICATION_ID = 1
-        private const val ACTION_TOGGLE = "com.seslikitap.TOGGLE"
+        const val ACTION_TOGGLE = "com.seslikitap.TOGGLE"
+        private const val ROOT = "kok"
         private const val ACTION_NEXT = "com.seslikitap.NEXT"
         private const val ACTION_PREV = "com.seslikitap.PREV"
         private const val ACTION_STOP = "com.seslikitap.STOP"
