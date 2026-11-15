@@ -72,20 +72,32 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
     val folders: StateFlow<List<FolderEntity>?> =
         repo.folders.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
+    /** Seçili raf (null: raf filtresi yok). */
+    val shelfFilter = MutableStateFlow<Long?>(null)
+    val shelves = repo.shelves.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
     private data class Params(
         val query: String,
         val sort: SortOrder,
         val filter: LibraryFilter,
         val browse: Boolean,
         val path: List<String>,
+        val shelf: Long?,
     )
 
-    private val params = combine(query, sort, filter, browseMode, path) { q, s, f, b, p -> Params(q, s, f, b, p) }
+    private val params = combine(
+        combine(query, sort, filter) { q, s, f -> Triple(q, s, f) },
+        browseMode, path, shelfFilter,
+    ) { (q, s, f), b, p, sh -> Params(q, s, f, b, p, sh) }
 
-    val ui: StateFlow<LibraryUi> = combine(repo.books.conflate(), repo.folders, params) { all, roots, p ->
+    val ui: StateFlow<LibraryUi> = combine(repo.books.conflate(), repo.folders, params, repo.shelfLinks) { all, roots, p, links ->
         val key = TurkishText.searchKey(p.query)
         val terms = key.split(' ').filter { it.isNotBlank() }
         var list = if (terms.isEmpty()) all else all.filter { b -> terms.all { b.searchKey.contains(it) } }
+        if (p.shelf != null) {
+            val onShelf = links.filter { it.shelfId == p.shelf }.mapTo(HashSet()) { it.bookId }
+            list = list.filter { it.id in onShelf }
+        }
         list = when (p.filter) {
             LibraryFilter.ALL -> list
             LibraryFilter.IN_PROGRESS -> list.filter { it.progress > 0f && !it.finished }
@@ -104,7 +116,7 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
         }
 
         // Klasör görünümü: arama yokken ve "Tümü" filtresindeyken
-        val browsing = p.browse && terms.isEmpty() && p.filter == LibraryFilter.ALL
+        val browsing = p.browse && terms.isEmpty() && p.filter == LibraryFilter.ALL && p.shelf == null
         var tiles = emptyList<FolderTile>()
         if (browsing) {
             val rootNames = roots.associate { it.uri to it.name }

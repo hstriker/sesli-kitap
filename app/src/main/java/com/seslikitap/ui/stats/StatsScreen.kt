@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.seslikitap.ui.stats
 
@@ -27,6 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,9 +71,22 @@ data class StatsUi(
     val inProgressCount: Int = 0,
     val bookCount: Int = 0,
     val topBooks: List<BookEntity> = emptyList(),
+    val year: Int = LocalDate.now().year,
+    val yearMs: Long = 0,
+    val yearFinished: List<BookEntity> = emptyList(),
+    val topAuthors: List<Pair<String, Int>> = emptyList(),
+    val bestMonth: String? = null,
+    val bestMonthMs: Long = 0,
 )
 
-class StatsViewModel(container: AppContainer) : ViewModel() {
+class StatsViewModel(private val container: AppContainer) : ViewModel() {
+    val goal = kotlinx.coroutines.flow.MutableStateFlow(container.prefs.yearlyGoal)
+
+    fun setGoal(n: Int) {
+        goal.value = n
+        container.prefs.yearlyGoal = n
+    }
+
     private val tr = Locale("tr", "TR")
 
     val ui: StateFlow<StatsUi> = combine(container.library.listening, container.library.books) { days, books ->
@@ -95,6 +109,12 @@ class StatsViewModel(container: AppContainer) : ViewModel() {
             best = maxOf(best, run)
             prev = d
         }
+        val yearFinished = books.filter { b ->
+            b.finishedAt?.let { java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).year == today.year } == true
+        }.sortedByDescending { it.finishedAt }
+        val bestMonth = days.filter { it.day.startsWith("${today.year}-") }
+            .groupBy { it.day.substring(0, 7) }.mapValues { (_, v) -> v.sumOf { it.ms } }
+            .maxByOrNull { it.value }?.takeIf { it.value > 0 }
         StatsUi(
             todayMs = byDay[today.toString()] ?: 0L,
             weekMs = week.sumOf { it.ms },
@@ -107,6 +127,15 @@ class StatsViewModel(container: AppContainer) : ViewModel() {
             inProgressCount = books.count { it.progress > 0f && !it.finished },
             bookCount = books.size,
             topBooks = books.filter { it.listenedMs > 60_000L }.sortedByDescending { it.listenedMs }.take(5),
+            year = today.year,
+            yearMs = days.filter { it.day.startsWith("${today.year}-") }.sumOf { it.ms },
+            yearFinished = yearFinished,
+            topAuthors = yearFinished.flatMap { b -> b.author.split(',').map { it.trim() }.filter { it.isNotEmpty() } }
+                .groupingBy { it }.eachCount().entries.sortedByDescending { it.value }.take(3).map { it.key to it.value },
+            bestMonth = bestMonth?.key?.let { ym ->
+                java.time.YearMonth.parse(ym).month.getDisplayName(TextStyle.FULL, tr)
+            },
+            bestMonthMs = bestMonth?.value ?: 0L,
         )
     }.flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), StatsUi())
@@ -116,6 +145,27 @@ class StatsViewModel(container: AppContainer) : ViewModel() {
 fun StatsScreen(onOpenBook: (Long) -> Unit) {
     val vm = appViewModel { StatsViewModel(it) }
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val goal by vm.goal.collectAsStateWithLifecycle()
+    var showGoal by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    if (showGoal) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showGoal = false },
+            title = { Text("${ui.year} hedefin kaç kitap?") },
+            text = {
+                androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(6, 12, 18, 24, 36, 52, 75, 100).forEach { n ->
+                        androidx.compose.material3.FilterChip(
+                            selected = goal == n,
+                            onClick = { vm.setGoal(n); showGoal = false },
+                            label = { Text("$n") },
+                        )
+                    }
+                }
+            },
+            confirmButton = { androidx.compose.material3.TextButton(onClick = { showGoal = false }) { Text("Kapat") } },
+        )
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -156,6 +206,7 @@ fun StatsScreen(onOpenBook: (Long) -> Unit) {
                     StatBox("Kitaplık", "${ui.bookCount}", Modifier.weight(1f))
                 }
             }
+            item { YearCard(ui, goal, onGoal = { showGoal = true }) }
             if (ui.topBooks.isNotEmpty()) {
                 item { Text("En çok dinlediklerin", style = MaterialTheme.typography.titleMedium) }
                 items(ui.topBooks, key = { it.id }) { b ->
@@ -185,6 +236,50 @@ fun StatsScreen(onOpenBook: (Long) -> Unit) {
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YearCard(ui: StatsUi, goal: Int, onGoal: () -> Unit) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${ui.year} özeti", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = onGoal) { Text("Hedef: $goal kitap") }
+            }
+            val done = ui.yearFinished.size
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { if (goal > 0) (done.toFloat() / goal).coerceIn(0f, 1f) else 0f },
+                modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                if (done >= goal) "Yıllık hedefini tamamladın! 🏆 ($done kitap)"
+                else "$done / $goal kitap · hedefe ${goal - done} kitap kaldı",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text("Bu yıl toplam ${formatMinutes(ui.yearMs)} dinledin.", style = MaterialTheme.typography.bodySmall)
+            ui.bestMonth?.let {
+                Text("En çok dinlediğin ay: $it (${formatMinutes(ui.bestMonthMs)})", style = MaterialTheme.typography.bodySmall)
+            }
+            if (ui.topAuthors.isNotEmpty()) {
+                Text(
+                    "En çok bitirdiğin yazarlar: " + ui.topAuthors.joinToString(", ") { (a, n) -> "$a ($n)" },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (ui.yearFinished.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text("Bu yıl bitirdiklerin", style = MaterialTheme.typography.labelLarge)
+                ui.yearFinished.take(10).forEach { b ->
+                    Text("✅ ${b.title}", style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }

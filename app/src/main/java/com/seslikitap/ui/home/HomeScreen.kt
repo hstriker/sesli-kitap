@@ -62,6 +62,7 @@ fun HomeScreen(
     onOpenReader: (Long) -> Unit,
     onOpenLibraryFolder: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenQuotes: () -> Unit,
 ) {
     val vm = appViewModel { HomeViewModel(it) }
     val ui by vm.ui.collectAsStateWithLifecycle()
@@ -79,7 +80,7 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            item { GoalCard(ui.todayMs, ui.goalMs, ui.streak) }
+            item { GoalCard(ui.todayMs, ui.goalMs, ui.streak, ui.yearFinished, ui.yearGoal) }
 
             ui.continueBook?.let { b ->
                 item {
@@ -95,6 +96,9 @@ fun HomeScreen(
             }
             if (ui.favorites.isNotEmpty()) {
                 item { BookRow("Favorilerim ❤️", ui.favorites, onOpenBook) }
+            }
+            ui.shelves.forEach { (name, books) ->
+                item(key = "raf-$name") { BookRow("📚 $name", books, onOpenBook) }
             }
             ui.suggestion?.let { s ->
                 item { SuggestionCard(s, onOpen = { onOpenBook(s.id) }, onAnother = { vm.nextSuggestion() }) }
@@ -117,6 +121,28 @@ fun HomeScreen(
             }
             if (ui.finished.isNotEmpty()) {
                 item { BookRow("Bitirdiklerin ✅", ui.finished, onOpenBook) }
+            }
+            if (ui.quotes.isNotEmpty()) {
+                item {
+                    SectionTitle("Alıntılarım ✍️") { TextButton(onClick = onOpenQuotes) { Text("Tümü") } }
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        items(ui.quotes, key = { it.id }) { q ->
+                            Card(Modifier.width(260.dp).clickable(onClick = onOpenQuotes)) {
+                                Column(Modifier.padding(14.dp)) {
+                                    Text("“${q.text}”", style = MaterialTheme.typography.bodyMedium, maxLines = 5, overflow = TextOverflow.Ellipsis)
+                                    Spacer(Modifier.height(6.dp))
+                                    Text(
+                                        "— ${q.bookTitle}", style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -149,7 +175,7 @@ private fun SectionTitle(text: String, action: (@Composable () -> Unit)? = null)
 }
 
 @Composable
-private fun GoalCard(todayMs: Long, goalMs: Long, streak: Int) {
+private fun GoalCard(todayMs: Long, goalMs: Long, streak: Int, yearFinished: Int, yearGoal: Int) {
     val progress = if (goalMs > 0) (todayMs.toFloat() / goalMs).coerceIn(0f, 1f) else 0f
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -172,6 +198,11 @@ private fun GoalCard(todayMs: Long, goalMs: Long, streak: Int) {
                     if (progress >= 1f) "Günlük hedefini tamamladın 🎉"
                     else "Hedef: ${formatMinutes(goalMs)} · ${formatMinutes(goalMs - todayMs)} kaldı",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+                Text(
+                    "${java.time.Year.now().value} hedefi: $yearFinished / $yearGoal kitap",
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
             }

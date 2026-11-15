@@ -139,7 +139,11 @@ private fun AppNavigation(openPlayer: MutableState<Boolean>) {
                     onOpenReader = openReader,
                     onOpenLibraryFolder = { goTab("library") },
                     onOpenSettings = { goTab("settings") },
+                    onOpenQuotes = { nav.navigate("quotes") },
                 )
+            }
+            composable("quotes") {
+                com.seslikitap.ui.quotes.QuotesScreen(onBack = { nav.popBackStack() }, onOpenBook = openBook)
             }
             composable("library") {
                 LibraryScreen(

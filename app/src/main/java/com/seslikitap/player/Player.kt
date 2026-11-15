@@ -55,6 +55,9 @@ data class PlayerState(
     val finished: Boolean = false,
     /** Kitabın bölüm uzunlukları hesaplandı (kitabın kalan süresi gösterilebilir). */
     val lengthsReady: Boolean = false,
+    /** Kitap bitince: serinin sıradaki kitabı. */
+    val nextBookId: Long? = null,
+    val nextBookTitle: String? = null,
 ) {
     val active get() = bookId != null
 }
@@ -181,7 +184,9 @@ class Player(
         openJob = scope.launch {
             pause()
             engine()
-            _state.update { it.copy(loading = true, error = null, bookId = bookId, lengthsReady = false) }
+            _state.update {
+                it.copy(loading = true, error = null, bookId = bookId, lengthsReady = false, nextBookId = null, nextBookTitle = null)
+            }
             val t0 = System.currentTimeMillis()
             Kayit.log("Kitap açılıyor: $bookId")
             try {
@@ -429,7 +434,17 @@ class Player(
         if (next == null) {
             pause()
             _state.update { it.copy(finished = true) }
-            _state.value.bookId?.let { id -> scope.launch(Dispatchers.IO) { markFinished(id) } }
+            _state.value.bookId?.let { id ->
+                scope.launch {
+                    val next = withContext(Dispatchers.IO) {
+                        markFinished(id)
+                        val e = db.books().get(id)
+                        val series = e?.series
+                        if (series != null) db.books().nextInSeries(series, e?.seriesIndex ?: 0.0) else null
+                    }
+                    if (next != null) _state.update { it.copy(nextBookId = next.id, nextBookTitle = next.title) }
+                }
+            }
             return
         }
         showChapter(next, 0)
@@ -697,6 +712,22 @@ class Player(
         }
     }
 
+    fun addQuote(ch: Chapter, sentence: Int) {
+        val st = _state.value
+        val id = st.bookId ?: return
+        if (sentence !in ch.sentences.indices) return
+        val s = ch.sentences[sentence]
+        container.library.addQuote(
+            com.seslikitap.data.QuoteEntity(
+                bookId = id, chapterIndex = ch.index, blockIndex = s.blockIndex,
+                sentenceIndex = ch.sentenceInBlock(sentence), text = ch.text(sentence),
+                bookTitle = st.bookTitle, author = st.author, createdAt = System.currentTimeMillis(),
+            )
+        )
+    }
+
+    private val container get() = context.container
+
     fun goToBookmark(b: BookmarkEntity) {
         val c = content ?: return
         scope.launch {
@@ -734,7 +765,7 @@ class Player(
     private var lastProgressChapter = -1
 
     private suspend fun markFinished(id: Long) {
-        db.books().setFinished(id, true)
+        db.books().setFinished(id, true, System.currentTimeMillis())
     }
 
     // ------------------------------------------------------------------ Ses odağı

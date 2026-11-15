@@ -103,6 +103,12 @@ fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onListen: () -> Unit) {
                             Spacer(Modifier.height(4.dp))
                             Text(e.author, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
                         }
+                        e.series?.let { sr ->
+                            Text(
+                                "📚 $sr serisi" + (e.seriesIndex?.let { " · ${it.toInt()}. kitap" } ?: ""),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                         Spacer(Modifier.height(8.dp))
                         val info = buildList {
                             if (e.chapterCount > 0) add("${e.chapterCount} bölüm")
@@ -130,6 +136,7 @@ fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onListen: () -> Unit) {
                     Text(if (e.progress > 0f) "Kaldığın yerden dinle (%${(e.progress * 100).toInt()})" else "Dinle")
                 }
             }
+            item { ShelfSection(e.id) }
             val err = loadError ?: if (e.status == BookStatus.DRM) e.errorMessage else null
             if (err != null) {
                 item {

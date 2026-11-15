@@ -37,6 +37,9 @@ data class EpubBook(
     val toc: List<TocEntry>,
     /** İçerik DRM ile şifrelenmişse true (seslendirilemez). */
     val drmProtected: Boolean,
+    /** Seri adı ve sırası (kitapta yazılıysa ya da başlıktan çıkarılabildiyse). */
+    val series: String? = null,
+    val seriesIndex: Double? = null,
 ) {
     val author: String get() = authors.joinToString(", ")
 }
@@ -44,7 +47,7 @@ data class EpubBook(
 object EpubParser {
 
     /** Ayrıştırıcı mantığı değiştiğinde artırılır; uygulama eski kayıtları yeniden tarar. */
-    const val VERSION = 1
+    const val VERSION = 2 // 2: seri bilgisi
 
     fun parse(zip: ZipArchive, fallbackTitle: String, includeToc: Boolean = true): EpubBook {
         val opfPath = findOpfPath(zip) ?: throw EpubException("Kitap içerik dosyası (OPF) bulunamadı")
@@ -122,7 +125,32 @@ object EpubParser {
         // ---- İçindekiler
         val toc = if (includeToc) buildToc(zip, manifest, spineEl, spine) else emptyList()
 
+        // ---- Seri: Calibre meta'ları, EPUB 3 belongs-to-collection, yoksa başlıktan tahmin
+        var series: String? = null
+        var seriesIndex: Double? = null
+        for (m in metaEls.filter { it.local() == "meta" }) {
+            when (m.attr("name").lowercase()) {
+                "calibre:series" -> series = TurkishText.cleanMeta(m.attr("content")).ifBlank { null }
+                "calibre:series_index" -> seriesIndex = m.attr("content").trim().toDoubleOrNull()
+            }
+        }
+        if (series == null) {
+            val coll = metaEls.firstOrNull { it.local() == "meta" && it.attr("property") == "belongs-to-collection" }
+            if (coll != null) {
+                series = TurkishText.cleanMeta(coll.text()).ifBlank { null }
+                val id = coll.attr("id")
+                if (id.isNotEmpty()) {
+                    seriesIndex = metaEls.firstOrNull {
+                        it.local() == "meta" && it.attr("refines") == "#$id" && it.attr("property") == "group-position"
+                    }?.text()?.trim()?.toDoubleOrNull()
+                }
+            }
+        }
+        if (series == null) SeriesGuess.fromTitle(title)?.let { (n, i) -> series = n; seriesIndex = i }
+
         return EpubBook(
+            series = series,
+            seriesIndex = seriesIndex,
             opfPath = opfPath,
             title = title,
             authors = authors,

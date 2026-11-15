@@ -100,6 +100,7 @@ fun ReaderScreen(bookId: Long, onBack: () -> Unit) {
     var sheet by remember { mutableStateOf<ReaderSheet?>(null) }
     var fontSize by remember { mutableStateOf(prefs.readerFontSize) }
     var follow by remember { mutableStateOf(true) }
+    var actions by remember { mutableStateOf<SentenceAction?>(null) }
 
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
@@ -192,6 +193,22 @@ fun ReaderScreen(bookId: Long, onBack: () -> Unit) {
                 else -> {
                     Column(Modifier.fillMaxSize()) {
                         EngineWarning(st.engine)
+                        if (st.finished && st.nextBookId != null) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            ) {
+                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("Kitap bitti 🎉 Serinin sıradaki kitabı:", style = MaterialTheme.typography.labelMedium)
+                                        Text(st.nextBookTitle ?: "", style = MaterialTheme.typography.titleMedium)
+                                    }
+                                    Button(onClick = { follow = true; st.nextBookId?.let { player.open(it, autoPlay = true) } }) {
+                                        Text("Başla")
+                                    }
+                                }
+                            }
+                        }
                         ChapterText(
                             chapter = ch,
                             current = st.sentenceIndex,
@@ -199,6 +216,7 @@ fun ReaderScreen(bookId: Long, onBack: () -> Unit) {
                             follow = follow,
                             onUserScroll = { follow = false },
                             onSentenceTap = { i -> follow = true; player.seek(ch.index, i) },
+                            onSentenceLongPress = { i, w -> actions = SentenceAction(ch, i, w) },
                         )
                     }
                     if (!follow) {
@@ -210,6 +228,19 @@ fun ReaderScreen(bookId: Long, onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    actions?.let { a ->
+        SentenceActionsSheet(
+            action = a,
+            onDismiss = { actions = null },
+            onQuote = {
+                player.addQuote(a.chapter, a.sentence)
+                actions = null
+                scope.launch { snackbar.showSnackbar("Alıntılara eklendi ✍️") }
+            },
+            onPlayFrom = { follow = true; player.seek(a.chapter.index, a.sentence); if (!st.playing) player.play(); actions = null },
+        )
     }
 
     when (sheet) {
@@ -279,6 +310,7 @@ private fun ChapterText(
     follow: Boolean,
     onUserScroll: () -> Unit,
     onSentenceTap: (Int) -> Unit,
+    onSentenceLongPress: (Int, String) -> Unit,
 ) {
     val listState = rememberLazyListState()
     val currentBlock = chapter.sentences.getOrNull(current)?.blockIndex ?: 0
@@ -329,11 +361,18 @@ private fun ChapterText(
                 fontWeight = if (heading) FontWeight.SemiBold else FontWeight.Normal,
                 onTextLayout = { layout = it },
                 modifier = Modifier.fillMaxWidth().pointerInput(chapter.index, bi) {
-                    detectTapGestures { pos ->
-                        val offset = layout?.getOffsetForPosition(pos) ?: 0
-                        val hit = sentencesInBlock.firstOrNull { offset < it.value.end } ?: sentencesInBlock.lastOrNull()
-                        if (hit != null) onSentenceTap(hit.index)
-                    }
+                    detectTapGestures(
+                        onTap = { pos ->
+                            val offset = layout?.getOffsetForPosition(pos) ?: 0
+                            val hit = sentencesInBlock.firstOrNull { offset < it.value.end } ?: sentencesInBlock.lastOrNull()
+                            if (hit != null) onSentenceTap(hit.index)
+                        },
+                        onLongPress = { pos ->
+                            val offset = layout?.getOffsetForPosition(pos) ?: 0
+                            val hit = sentencesInBlock.firstOrNull { offset < it.value.end } ?: sentencesInBlock.lastOrNull()
+                            if (hit != null) onSentenceLongPress(hit.index, wordAt(block.text, offset))
+                        },
+                    )
                 },
             )
         }
@@ -418,4 +457,14 @@ private fun Controls(
 fun formatRate(rate: Float): String {
     val r = Math.round(rate * 100) / 100.0
     return (if (r == Math.floor(r)) "${r.toInt()}.0" else r.toString()).replace('.', ',') + "x"
+}
+
+/** Paragraftaki konumun üzerindeki kelime. */
+fun wordAt(text: String, offset: Int): String {
+    if (text.isEmpty()) return ""
+    var a = offset.coerceIn(0, text.length - 1)
+    var b = a
+    while (a > 0 && text[a - 1].isLetter()) a--
+    while (b < text.length && text[b].isLetter()) b++
+    return text.substring(a, b)
 }

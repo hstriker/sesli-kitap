@@ -106,6 +106,11 @@ class Prefs(context: Context) {
         get() = sp.getString("phone_dialog_voice", null)
         set(v) = sp.edit().putString("phone_dialog_voice", v).apply()
 
+    /** Yıllık kitap hedefi. */
+    var yearlyGoal: Int
+        get() = sp.getInt("yearly_goal", 12)
+        set(v) = sp.edit().putInt("yearly_goal", v).apply()
+
     var speechRate: Float
         get() = sp.getFloat("speech_rate", 1f)
         set(v) = sp.edit().putFloat("speech_rate", v).apply()

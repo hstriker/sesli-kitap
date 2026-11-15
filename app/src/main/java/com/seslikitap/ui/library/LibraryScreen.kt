@@ -95,6 +95,8 @@ fun LibraryScreen(
     var sortMenu by remember { mutableStateOf(false) }
 
     val browseMode by vm.browseMode.collectAsStateWithLifecycle()
+    val shelves by vm.shelves.collectAsStateWithLifecycle()
+    val shelfFilter by vm.shelfFilter.collectAsStateWithLifecycle()
     androidx.activity.compose.BackHandler(enabled = ui.browsing && ui.path.isNotEmpty()) { vm.up() }
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
@@ -183,6 +185,13 @@ fun LibraryScreen(
                         Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        shelves.forEach { sh ->
+                            FilterChip(
+                                selected = shelfFilter == sh.id,
+                                onClick = { vm.shelfFilter.value = if (shelfFilter == sh.id) null else sh.id },
+                                label = { Text("📚 ${sh.name}") },
+                            )
+                        }
                         LibraryFilter.entries.forEach { f ->
                             if (f == LibraryFilter.PROBLEMS && ui.problemCount == 0) return@forEach
                             FilterChip(

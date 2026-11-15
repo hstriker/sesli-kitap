@@ -72,6 +72,39 @@ class LibraryRepository(
     suspend fun markOpened(id: Long) = db.books().markOpened(id, System.currentTimeMillis())
     suspend fun setFavorite(id: Long, favorite: Boolean) = db.books().setFavorite(id, favorite)
     val listening = db.listening().observeAll()
+    val shelves = db.shelves().observeShelves()
+    val shelfLinks = db.shelves().observeLinks()
+    val quotes = db.quotes().observeAll()
+
+    // ------------------------------------------------------------------ Raflar ve alıntılar
+
+    fun shelvesOf(bookId: Long) = db.shelves().observeShelvesOf(bookId)
+
+    fun createShelf(name: String, withBook: Long? = null) {
+        val n = name.trim()
+        if (n.isEmpty()) return
+        scope.launch {
+            val id = db.shelves().insert(ShelfEntity(name = n, createdAt = System.currentTimeMillis()))
+            if (withBook != null) db.shelves().add(ShelfBookEntity(id, withBook, System.currentTimeMillis()))
+        }
+    }
+
+    fun deleteShelf(id: Long) {
+        scope.launch {
+            db.shelves().clearShelf(id)
+            db.shelves().deleteShelf(id)
+        }
+    }
+
+    fun setOnShelf(shelfId: Long, bookId: Long, on: Boolean) {
+        scope.launch {
+            if (on) db.shelves().add(ShelfBookEntity(shelfId, bookId, System.currentTimeMillis()))
+            else db.shelves().remove(shelfId, bookId)
+        }
+    }
+
+    fun addQuote(q: QuoteEntity) { scope.launch { db.quotes().insert(q) } }
+    fun deleteQuote(id: Long) { scope.launch { db.quotes().delete(id) } }
 
     // ------------------------------------------------------------------ Klasörler
 
@@ -245,7 +278,8 @@ class LibraryRepository(
                                     } else {
                                         db.books().update(entity.copy(id = old.id, addedAt = old.addedAt,
                                             lastOpenedAt = old.lastOpenedAt, progress = old.progress, finished = old.finished,
-                                            favorite = old.favorite, listenedMs = old.listenedMs))
+                                            favorite = old.favorite, listenedMs = old.listenedMs,
+                                            finishedAt = old.finishedAt))
                                     }
                                     val done = counter.incrementAndGet()
                                     _scan.update { it.copy(processed = it.processed + 1, phase = "Kitaplar okunuyor… ($done/${todo.size})") }
@@ -373,6 +407,8 @@ class LibraryRepository(
             searchKey = TurkishText.searchKey("$title $author ${f.name} ${f.relativePath}"),
             parserVersion = EpubParser.VERSION,
             addedAt = old?.addedAt ?: now,
+            series = b?.series,
+            seriesIndex = b?.seriesIndex,
         )
     }
 

@@ -6,6 +6,7 @@ import com.seslikitap.AppContainer
 import com.seslikitap.data.BookEntity
 import com.seslikitap.data.BookStatus
 import com.seslikitap.data.ListeningDay
+import com.seslikitap.data.QuoteEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -27,6 +28,10 @@ data class HomeUi(
     val recentlyAdded: List<BookEntity> = emptyList(),
     val finished: List<BookEntity> = emptyList(),
     val folders: List<HomeFolder> = emptyList(),
+    val shelves: List<Pair<String, List<BookEntity>>> = emptyList(),
+    val quotes: List<QuoteEntity> = emptyList(),
+    val yearGoal: Int = 12,
+    val yearFinished: Int = 0,
     val todayMs: Long = 0,
     val goalMs: Long = 30 * 60_000L,
     val streak: Int = 0,
@@ -47,7 +52,19 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
     /** "Başka öner" her basışta artar. */
     private val suggestionSeed = MutableStateFlow(0)
 
-    val ui: StateFlow<HomeUi> = combine(repo.books, repo.folders, repo.listening, suggestionSeed) { books, roots, days, seed ->
+    private val extras = combine(repo.shelves, repo.shelfLinks, repo.quotes) { a, b, c -> Triple(a, b, c) }
+
+    val ui: StateFlow<HomeUi> = combine(repo.books, repo.folders, repo.listening, suggestionSeed, extras) { books, roots, days, seed, ex ->
+        val (shelfList, links, quotes) = ex
+        val byId = books.associateBy { it.id }
+        val shelfRows = shelfList.mapNotNull { sh ->
+            val list = links.filter { it.shelfId == sh.id }.sortedByDescending { it.addedAt }.mapNotNull { byId[it.bookId] }
+            if (list.isEmpty()) null else sh.name to list
+        }
+        val year = java.time.Year.now().value
+        val yearFinished = books.count { b ->
+            b.finishedAt?.let { java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).year == year } == true
+        }
         val ok = books.filter { it.status == BookStatus.OK }
         val inProgress = ok.filter { it.progress > 0f && !it.finished }
             .sortedByDescending { it.lastOpenedAt ?: 0L }
@@ -76,6 +93,10 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             todayMs = days.firstOrNull { it.day == today }?.ms ?: 0L,
             goalMs = container.prefs.dailyGoalMin * 60_000L,
             streak = streakOf(days),
+            shelves = shelfRows,
+            quotes = quotes.take(5),
+            yearGoal = container.prefs.yearlyGoal,
+            yearFinished = yearFinished,
         )
     }.flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUi())
