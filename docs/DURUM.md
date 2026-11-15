@@ -26,6 +26,14 @@ Veritabanı göçleri (1→2→3) gerçek veriyle denenmedi. İlk açılışta a
 6. [x] **E) Web** (Firebase + Hosting açık, secret eklendi, Web istemcisi "Web client 1", Client ID `web/config.js`'te): Firebase'i projeye ekle, Hosting'i aç, hizmet hesabı JSON → GitHub secret `FIREBASE_SERVICE_ACCOUNT`, Web OAuth istemcisi (origin `https://sesli-kitap-514818.web.app`) → **Client ID'yi Claude'a ver** → Claude `web/config.js`'e yazar
 7. [ ] Toplu deneme; sorunlar için Ayarlar → Tanı kaydı → Kopyala
 
+## Gemini sesi (16 Kasım 2026)
+
+- Emre Gemini TTS sesini çok beğendi ("tam aradığım ses"); WaveNet yerine bu kullanılacak (ücretsiz AI Studio anahtarı).
+- `voiceMode = "gemini"` → `GeminiTtsEngine` (GroupSpeechEngine): Player cümleleri ~2000-3200 karakterlik paragraf
+  parçalarına böler (`groupEnds`, sabit sınırlar → önbellek `files/ses-gemini` tutar), bir parça önceden hazırlanır,
+  cümle vurgusu süreye orantılı tahmin. 429 → günlük ise Pasifik gece yarısına kadar telefon sesine düşer.
+- Ücretsiz günlük sınır belgelenmemiş (forumlarda ~10 istek/gün). Emre'nin gerçek sınırı ölçmesi bekleniyor.
+
 ## Kararlar
 
 - **Ücretli/kart isteyen hiçbir adım önerme**; önce ücret/ön ödeme riskini açıkça söyle (doğal ses olayı).

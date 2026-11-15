@@ -35,6 +35,9 @@ object GeminiTts {
 
     class Result(val file: File, val model: String, val millis: Long)
 
+    /** Ücretsiz kota doldu. [daily]: günlük sınır (gece yarısı Pasifik saatinde yenilenir); değilse [retrySeconds] sonra. */
+    class QuotaException(val daily: Boolean, val retrySeconds: Int, message: String) : IOException(message)
+
     /** Metni seslendirip WAV dosyası olarak [out]'a yazar. */
     suspend fun synthesize(apiKey: String, text: String, voice: String, narrator: Boolean, out: File): Result =
         withContext(Dispatchers.IO) {
@@ -66,6 +69,12 @@ object GeminiTts {
                     val err = conn.errorStream?.bufferedReader()?.readText().orEmpty()
                     Kayit.log("GeminiTts $model HTTP $code: ${err.take(400).replace('\n', ' ')}")
                     if (code == 404) cachedModel = null
+                    if (code == 429) {
+                        val daily = err.contains("PerDay", true) || err.contains("per day", true) || err.contains("RPD", false)
+                        val retry = Regex("\"retryDelay\"\\s*:\\s*\"(\\d+)").find(err)?.groupValues?.get(1)?.toIntOrNull() ?: 60
+                        throw QuotaException(daily, retry, "Gemini ses sınırına ulaşıldı (ücretsiz kota). " +
+                            if (daily) "Günlük sınır yarın yenilenir." else "Birkaç dakika sonra tekrar deneyin.")
+                    }
                     throw IOException(
                         when (code) {
                             429 -> "Gemini ses sınırına ulaşıldı (ücretsiz kota). Birkaç dakika sonra ya da yarın tekrar deneyin."

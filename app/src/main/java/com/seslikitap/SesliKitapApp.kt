@@ -135,6 +135,32 @@ class Prefs(context: Context) {
         get() = sp.getString("gemini_key", null)
         set(v) = sp.edit().putString("gemini_key", v?.trim()).apply()
 
+    /** Gemini sesi: ses adı, anlatıcı tonu, kota durumu. */
+    var geminiVoice: String
+        get() = sp.getString("gemini_voice", "Kore") ?: "Kore"
+        set(v) = sp.edit().putString("gemini_voice", v).apply()
+
+    var geminiNarrator: Boolean
+        get() = sp.getBoolean("gemini_narrator", true)
+        set(v) = sp.edit().putBoolean("gemini_narrator", v).apply()
+
+    /** Bu zamana kadar (epoch ms) Gemini'ye istek gönderilmez; kota dolunca ayarlanır. */
+    var geminiBlockedUntil: Long
+        get() = sp.getLong("gemini_blocked_until", 0L)
+        set(v) = sp.edit().putLong("gemini_blocked_until", v).apply()
+
+    /** Gemini kota günü (Pasifik saatine göre) ve o gün seslendirilen karakter / istek sayısı. */
+    fun geminiToday(): Pair<Long, Int> {
+        val day = java.time.LocalDate.now(java.time.ZoneId.of("America/Los_Angeles")).toString()
+        return if (sp.getString("gemini_day", null) == day) sp.getLong("gemini_chars", 0L) to sp.getInt("gemini_reqs", 0) else 0L to 0
+    }
+
+    fun addGeminiUsage(chars: Long) {
+        val day = java.time.LocalDate.now(java.time.ZoneId.of("America/Los_Angeles")).toString()
+        val (c, r) = geminiToday()
+        sp.edit().putString("gemini_day", day).putLong("gemini_chars", c + chars).putInt("gemini_reqs", r + 1).apply()
+    }
+
     /** Kitapta kalınan cümlenin başı (cihazlar arası tam yer eşitleme için). */
     fun positionExcerpt(bookId: Long): String? = sp.getString("pos_excerpt_$bookId", null)
     fun setPositionExcerpt(bookId: Long, text: String) = sp.edit().putString("pos_excerpt_$bookId", text).apply()

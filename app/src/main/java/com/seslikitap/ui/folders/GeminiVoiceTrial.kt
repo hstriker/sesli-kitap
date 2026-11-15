@@ -1,6 +1,7 @@
 package com.seslikitap.ui.folders
 
 import android.media.MediaPlayer
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +13,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -52,8 +54,10 @@ fun GeminiVoiceTrialSection() {
     }
 
     var text by remember { mutableStateOf(bookSample() ?: ORNEK_METIN) }
-    var voice by remember { mutableStateOf(GeminiTts.VOICES.first().first) }
-    var narrator by remember { mutableStateOf(true) }
+    val prefs = container.prefs
+    var voice by remember { mutableStateOf(prefs.geminiVoice) }
+    var narrator by remember { mutableStateOf(prefs.geminiNarrator) }
+    var enabled by remember { mutableStateOf(container.player.usingGeminiVoice) }
     var menuOpen by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
@@ -66,13 +70,36 @@ fun GeminiVoiceTrialSection() {
     DisposableEffect(Unit) { onDispose { stopAudio() } }
 
     Column {
-        Text("Gemini sesiyle dene", style = MaterialTheme.typography.titleSmall)
+        Text("Gemini sesi", style = MaterialTheme.typography.titleSmall)
         Text(
-            "Yukarıdaki Gemini anahtarıyla, ücretsiz. Açık bir kitap varsa kaldığın yerden bir paragraf gelir; " +
-                "metni değiştirebilirsin. Ücretsiz kotanın günlük sınırı vardır.",
+            "Kitaplar Gemini'nin doğal sesiyle okunur (yukarıdaki anahtarla, ücretsiz). Ücretsiz kotanın günlük sınırı " +
+                "dolunca telefon sesine geçilir; ertesi gün Gemini sesi kendiliğinden geri gelir. Dinlenen kısımlar " +
+                "telefonda saklanır, tekrar dinlemek kotadan yemez.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Row(
+            Modifier.fillMaxWidth().clickable { enabled = !enabled; container.player.setGeminiVoice(enabled) }.padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Kitapları Gemini sesiyle oku", modifier = Modifier.weight(1f))
+            Switch(checked = enabled, onCheckedChange = { enabled = it; container.player.setGeminiVoice(it) })
+        }
+        val (todayChars, todayReqs) = remember(status, enabled) { prefs.geminiToday() }
+        val blockedUntil = remember(status, enabled) { prefs.geminiBlockedUntil }
+        Text(
+            buildString {
+                append("Bugün: ${todayReqs} istek, ~${todayChars / 900} dk ses")
+                if (blockedUntil > System.currentTimeMillis()) {
+                    append(" · Sınır doldu, ")
+                    append(java.text.SimpleDateFormat("HH:mm", java.util.Locale("tr")).format(java.util.Date(blockedUntil)))
+                    append("'dan sonra yenilenir")
+                }
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text("Dene", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
         OutlinedTextField(
             value = text,
             onValueChange = { text = it },
@@ -92,13 +119,18 @@ fun GeminiVoiceTrialSection() {
                 }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     GeminiTts.VOICES.forEach { (name, label) ->
-                        DropdownMenuItem(text = { Text(label) }, onClick = { voice = name; menuOpen = false })
+                        DropdownMenuItem(text = { Text(label) }, onClick = {
+                            voice = name; menuOpen = false
+                            prefs.geminiVoice = name; container.player.geminiSettingsChanged()
+                        })
                     }
                 }
             }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = narrator, onCheckedChange = { narrator = it })
+            Checkbox(checked = narrator, onCheckedChange = {
+                narrator = it; prefs.geminiNarrator = it; container.player.geminiSettingsChanged()
+            })
             Text("Anlatıcı tonu (sakin, sıcak)")
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -115,6 +147,7 @@ fun GeminiVoiceTrialSection() {
                         try {
                             val out = File(context.cacheDir, "gemini-deneme.wav")
                             val r = GeminiTts.synthesize(key, text.trim(), voice, narrator, out)
+                            prefs.addGeminiUsage(text.trim().length.toLong())
                             val p = MediaPlayer()
                             p.setDataSource(r.file.absolutePath)
                             p.setOnCompletionListener { status = "Bitti. (${text.trim().length} karakter, hazırlanma ${r.millis / 1000.0} sn, model: ${r.model})" }

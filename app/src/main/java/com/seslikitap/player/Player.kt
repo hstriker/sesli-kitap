@@ -110,19 +110,22 @@ class Player(
     private fun engine(): SpeechEngine {
         engine?.let { return it }
         val cloud = prefs.voiceMode == "cloud"
+        val gemini = prefs.voiceMode == "gemini"
         val e: SpeechEngine =
             if (cloud) CloudTtsEngine(context, context.container.cloudAuth, prefs)
+            else if (gemini) GeminiTtsEngine(context, prefs)
             else AndroidTtsEngine(context, prefs.ttsEngine)
         e.listener = this
         engine = e
         engineWatch = scope.launch {
-            if (e is CloudTtsEngine) {
+            val notice = (e as? CloudTtsEngine)?.notice ?: (e as? GeminiTtsEngine)?.notice
+            if (notice != null) {
                 // Doğal ses uyarılarını (kota doldu, bağlantı gerekli…) ekranda bir kez göster
                 launch {
-                    e.notice.collect { msg ->
+                    notice.collect { msg ->
                         if (msg != null) {
                             _state.update { it.copy(error = msg) }
-                            e.notice.value = null
+                            notice.value = null
                         }
                     }
                 }
@@ -132,8 +135,10 @@ class Player(
                 if (s == EngineStatus.Ready) {
                     e.setRate(_state.value.rate)
                     e.setPitch(_state.value.pitch)
-                    if (cloud) e.setVoice(prefs.cloudVoice) else prefs.voiceName?.let { e.setVoice(it) }
-                    e.setDialogVoice(if (cloud) prefs.cloudDialogVoice else prefs.phoneDialogVoice)
+                    if (cloud) e.setVoice(prefs.cloudVoice)
+                    else if (gemini) e.setVoice(prefs.geminiVoice)
+                    else prefs.voiceName?.let { e.setVoice(it) }
+                    if (!gemini) e.setDialogVoice(if (cloud) prefs.cloudDialogVoice else prefs.phoneDialogVoice)
                 }
             }
         }
@@ -144,12 +149,27 @@ class Player(
 
     fun setVoice(name: String?) {
         if (prefs.voiceMode == "cloud") prefs.cloudVoice = name ?: CloudTtsEngine.DEFAULT_VOICE
+        else if (prefs.voiceMode == "gemini") prefs.geminiVoice = name ?: "Kore"
         else prefs.voiceName = name
         engine().setVoice(name)
         restartIfPlaying()
     }
 
     val usingCloudVoice: Boolean get() = prefs.voiceMode == "cloud"
+    val usingGeminiVoice: Boolean get() = prefs.voiceMode == "gemini"
+
+    /** Telefon sesi ile Gemini sesi arasında geçiş. */
+    fun setGeminiVoice(on: Boolean) {
+        val wasPlaying = _state.value.playing
+        prefs.voiceMode = if (on) "gemini" else "phone"
+        resetEngine()
+        if (wasPlaying) play()
+    }
+
+    /** Gemini ses ayarı (ses / anlatıcı tonu) değişti. */
+    fun geminiSettingsChanged() {
+        if (usingGeminiVoice) { engine().setVoice(prefs.geminiVoice); restartIfPlaying() }
+    }
 
     /** Diyaloglar için ikinci ses; null kapatır. */
     fun setDialogVoice(name: String?) {
@@ -403,11 +423,48 @@ class Player(
     private fun fillQueue(flush: Boolean) {
         val ch = _chapter.value ?: return
         val e = engine ?: return
+        if (e is GroupSpeechEngine) { fillGroups(ch, e, flush); return }
         var first = flush
         while (queuedUntil < ch.sentences.size - 1 && queuedUntil - _state.value.sentenceIndex < LOOKAHEAD - 1) {
             queuedUntil++
             val alt = prefs.dialogVoiceEnabled && ch.dialog.getOrElse(queuedUntil) { false }
             e.speak(utteranceId(ch.index, queuedUntil), spokenText(ch, queuedUntil), first, alt)
+            first = false
+        }
+    }
+
+    /** Gemini parçalarının bitiş cümleleri (bölüm başına; her seferinde aynı sınırlar → önbellek tutar). */
+    private var groupEndsFor: Pair<Chapter, IntArray>? = null
+
+    private fun groupEnds(ch: Chapter): IntArray {
+        groupEndsFor?.let { (c, ends) -> if (c === ch) return ends }
+        val ends = ArrayList<Int>()
+        var acc = 0
+        for (i in ch.sentences.indices) {
+            acc += ch.sentences[i].let { it.end - it.start } + 1
+            val last = i == ch.sentences.size - 1
+            val paragraphEnd = last || ch.sentences[i + 1].blockIndex != ch.sentences[i].blockIndex
+            if (last || acc >= GROUP_MAX_CHARS || (acc >= GROUP_TARGET_CHARS && paragraphEnd)) { ends.add(i); acc = 0 }
+        }
+        return ends.toIntArray().also { groupEndsFor = ch to it }
+    }
+
+    /** Gemini: cümleleri parça parça sıraya koyar; çalan parçadan sonra bir parça önceden hazırlanır. */
+    private fun fillGroups(ch: Chapter, e: GroupSpeechEngine, flush: Boolean) {
+        val ends = groupEnds(ch)
+        var first = flush
+        while (queuedUntil < ch.sentences.size - 1) {
+            // Çalan parça + bir sonraki parça sırada olsun (sonraki, çalarken hazırlanır)
+            val cur = _state.value.sentenceIndex
+            val curEnd = ends.firstOrNull { it >= cur } ?: break
+            if (!first && queuedUntil > curEnd) break
+            val next = queuedUntil + 1
+            val gi = ends.indexOfFirst { it >= next }.takeIf { it >= 0 } ?: break
+            val start = if (gi == 0) 0 else ends[gi - 1] + 1
+            val end = ends[gi]
+            val items = (start..end).map { utteranceId(ch.index, it) to spokenText(ch, it) }
+            e.speakGroup(items, next - start, first)
+            queuedUntil = end
             first = false
         }
     }
@@ -893,5 +950,8 @@ class Player(
     companion object {
         private const val TAG = "Player"
         private const val LOOKAHEAD = 3
+        /** Gemini parça boyu (karakter): ücretsiz kotada günlük istek sayısı az olduğu için uzun parçalar. */
+        private const val GROUP_TARGET_CHARS = 2000
+        private const val GROUP_MAX_CHARS = 3200
     }
 }

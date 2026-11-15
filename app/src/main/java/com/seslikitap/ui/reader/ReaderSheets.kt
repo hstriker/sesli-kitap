@@ -137,7 +137,9 @@ fun SettingsSheet(fontSize: Float, onFontSize: (Float) -> Unit, onDismiss: () ->
     var pitch by remember { mutableFloatStateOf(st.pitch) }
     var voices by remember { mutableStateOf(player.voices()) }
     var engines by remember { mutableStateOf(player.engines()) }
-    var selectedVoice by remember { mutableStateOf(if (player.usingCloudVoice) prefs.cloudVoice else prefs.voiceName) }
+    var selectedVoice by remember {
+        mutableStateOf(if (player.usingCloudVoice) prefs.cloudVoice else if (player.usingGeminiVoice) prefs.geminiVoice else prefs.voiceName)
+    }
     var selectedEngine by remember { mutableStateOf(prefs.ttsEngine) }
     var skipNotes by remember { mutableStateOf(prefs.skipFootnotes) }
     var skipPages by remember { mutableStateOf(prefs.skipPageNumbers) }
@@ -185,15 +187,25 @@ fun SettingsSheet(fontSize: Float, onFontSize: (Float) -> Unit, onDismiss: () ->
 
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             var cloud by remember { mutableStateOf(player.usingCloudVoice) }
+            var gemini by remember { mutableStateOf(player.usingGeminiVoice) }
+            SwitchRow("Gemini sesi (en doğal)", gemini) {
+                gemini = it
+                if (it) cloud = false
+                player.setGeminiVoice(it)
+                voices = player.voices()
+                engines = player.engines()
+                selectedVoice = if (it) prefs.geminiVoice else prefs.voiceName
+            }
             SwitchRow("Doğal ses (Google WaveNet)", cloud) {
                 cloud = it
+                if (it) gemini = false
                 player.setCloudVoice(it)
                 voices = player.voices()
                 engines = player.engines()
                 selectedVoice = if (it) prefs.cloudVoice else prefs.voiceName
             }
             Text("Ses", style = MaterialTheme.typography.titleSmall)
-            if (!player.usingCloudVoice) {
+            if (!player.usingCloudVoice && !player.usingGeminiVoice) {
                 RadioRow("Varsayılan Türkçe ses", selectedVoice == null) {
                     selectedVoice = null; player.setVoice(null)
                 }
@@ -213,7 +225,7 @@ fun SettingsSheet(fontSize: Float, onFontSize: (Float) -> Unit, onDismiss: () ->
 
             // Diyaloglarda farklı ses
             var dialogVoice by remember { mutableStateOf(player.currentDialogVoice()) }
-            if (voices.size >= 2) {
+            if (voices.size >= 2 && !gemini) {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 SwitchRow("Diyaloglarda farklı ses (— Evet, «Gel» gibi konuşmalar)", dialogVoice != null) { on ->
                     val pick = if (on) voices.firstOrNull { it.name != selectedVoice }?.name else null
