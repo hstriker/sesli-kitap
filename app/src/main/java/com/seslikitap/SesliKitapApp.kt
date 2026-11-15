@@ -4,6 +4,8 @@ import android.app.Application
 import android.content.Context
 import com.seslikitap.data.AppDatabase
 import com.seslikitap.data.LibraryRepository
+import com.seslikitap.drive.DriveApi
+import com.seslikitap.drive.DriveAuth
 import com.seslikitap.player.Player
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +29,8 @@ class AppContainer(context: Context) {
     val library = LibraryRepository(context, db, appScope)
     val prefs = Prefs(context)
     val player by lazy { Player(appContext, db, prefs) }
+    val driveAuth by lazy { DriveAuth(appContext) }
+    val drive by lazy { DriveApi(driveAuth) }
 }
 
 class Prefs(context: Context) {

@@ -81,4 +81,7 @@ dependencies {
 
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("androidx.media:media:1.7.0")
+
+    // Google Drive erişimi (yalnızca okuma izni)
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 }

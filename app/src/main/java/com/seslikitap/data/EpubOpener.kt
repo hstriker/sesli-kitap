@@ -6,7 +6,10 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import com.seslikitap.core.ByteArraySource
 import com.seslikitap.core.FileChannelSource
+import com.seslikitap.container
 import com.seslikitap.core.ZipArchive
+import com.seslikitap.drive.DriveCache
+import com.seslikitap.drive.DriveItem
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -14,15 +17,54 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.security.MessageDigest
 
+/** Google Drive adresleri: "gdrive://file/<id>", "gdrive://folder/<id>" */
+object DriveUri {
+    const val SCHEME = "gdrive"
+    fun file(id: String) = "$SCHEME://file/$id"
+    fun folder(id: String) = "$SCHEME://folder/$id"
+    fun isDrive(uri: String) = uri.startsWith("$SCHEME://")
+    fun id(uri: String) = uri.substringAfterLast('/')
+}
+
 object EpubOpener {
 
     private const val MAX_IN_MEMORY = 300L * 1024 * 1024
 
     /**
+     * Kitabı okumak için açar. Drive kitapları önce telefona indirilir (sonra internetsiz de okunur).
+     */
+    fun open(context: Context, uri: Uri): ZipArchive {
+        val s = uri.toString()
+        if (DriveUri.isDrive(s)) {
+            val file = DriveCache.ensure(context, context.container.drive, DriveUri.id(s))
+            return try {
+                ZipArchive.openFile(file.path)
+            } catch (e: IOException) {
+                file.delete() // bozuk indirme: bir dahaki sefere yeniden indirilsin
+                throw e
+            }
+        }
+        return openLocal(context, uri)
+    }
+
+    /**
+     * Tarama için açar: Drive kitapları indirilmeden, sadece gereken parçaları okunarak açılır.
+     */
+    fun openForScan(context: Context, uri: Uri, sizeHint: Long, modified: Long, name: String): ZipArchive {
+        val s = uri.toString()
+        if (DriveUri.isDrive(s)) {
+            val id = DriveUri.id(s)
+            if (DriveCache.isCached(context, id)) return ZipArchive.openFile(DriveCache.fileFor(context, id).path)
+            return context.container.drive.openRemote(DriveItem(id, name, "application/epub+zip", sizeHint, modified))
+        }
+        return openLocal(context, uri)
+    }
+
+    /**
      * content:// adresindeki EPUB'ı açar. Önce dosyayı belleğe almadan rastgele erişimle açmayı dener;
      * kaynak buna izin vermezse (ör. bulut sağlayıcıları) dosyayı belleğe okur.
      */
-    fun open(context: Context, uri: Uri): ZipArchive {
+    private fun openLocal(context: Context, uri: Uri): ZipArchive {
         val resolver = context.contentResolver
         try {
             val pfd = resolver.openFileDescriptor(uri, "r") ?: throw IOException("Dosya açılamadı")

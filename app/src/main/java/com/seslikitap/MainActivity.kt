@@ -15,6 +15,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.seslikitap.ui.book.BookDetailScreen
+import com.seslikitap.ui.folders.DrivePickerScreen
 import com.seslikitap.ui.folders.FoldersScreen
 import com.seslikitap.ui.library.LibraryScreen
 import com.seslikitap.ui.reader.ReaderScreen
@@ -70,6 +71,7 @@ private fun AppNavigation(openPlayer: MutableState<Boolean>) {
                 onOpenBook = { id -> nav.navigate("book/$id") },
                 onOpenReader = { id -> nav.navigate("reader/$id") { launchSingleTop = true } },
                 onOpenFolders = { nav.navigate("folders") },
+                onAddDrive = { nav.navigate("drive") },
             )
         }
         composable(
@@ -93,7 +95,13 @@ private fun AppNavigation(openPlayer: MutableState<Boolean>) {
             )
         }
         composable("folders") {
-            FoldersScreen(onBack = { nav.popBackStack() })
+            FoldersScreen(onBack = { nav.popBackStack() }, onAddDrive = { nav.navigate("drive") })
+        }
+        composable("drive") {
+            DrivePickerScreen(
+                onBack = { nav.popBackStack() },
+                onAdded = { nav.popBackStack("library", inclusive = false) },
+            )
         }
     }
 }

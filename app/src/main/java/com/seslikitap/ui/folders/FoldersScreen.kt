@@ -17,6 +17,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.foundation.layout.width
+import com.seslikitap.data.DriveUri
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -60,7 +63,7 @@ class FoldersViewModel(container: AppContainer) : ViewModel() {
 }
 
 @Composable
-fun FoldersScreen(onBack: () -> Unit) {
+fun FoldersScreen(onBack: () -> Unit, onAddDrive: () -> Unit) {
     val vm = appViewModel { FoldersViewModel(it) }
     val folders by vm.folders.collectAsStateWithLifecycle()
     val counts by vm.counts.collectAsStateWithLifecycle()
@@ -84,7 +87,7 @@ fun FoldersScreen(onBack: () -> Unit) {
             ExtendedFloatingActionButton(
                 onClick = { pick.launch(null) },
                 icon = { Icon(Icons.Default.Add, null) },
-                text = { Text("Klasör ekle") },
+                text = { Text("Telefondan klasör ekle") },
             )
         },
     ) { padding ->
@@ -101,8 +104,15 @@ fun FoldersScreen(onBack: () -> Unit) {
             items(folders, key = { it.uri }) { f ->
                 ListItem(
                     headlineContent = { Text(f.name) },
-                    supportingContent = { Text("${counts[f.uri] ?: 0} kitap") },
-                    leadingContent = { Icon(Icons.Default.Folder, null, tint = MaterialTheme.colorScheme.primary) },
+                    supportingContent = {
+                        Text("${counts[f.uri] ?: 0} kitap" + if (DriveUri.isDrive(f.uri)) " · Google Drive" else " · Telefon")
+                    },
+                    leadingContent = {
+                        Icon(
+                            if (DriveUri.isDrive(f.uri)) Icons.Default.Cloud else Icons.Default.Folder, null,
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    },
                     trailingContent = {
                         IconButton(onClick = { confirmRemove = f }) { Icon(Icons.Default.Delete, "Kaldır") }
                     },
@@ -111,7 +121,12 @@ fun FoldersScreen(onBack: () -> Unit) {
             }
             item {
                 Column(Modifier.fillMaxWidth().padding(16.dp)) {
-                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = onAddDrive, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.Cloud, null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Google Drive'dan klasör ekle")
+                    }
+                    Spacer(Modifier.height(16.dp))
                     OutlinedButton(onClick = { vm.fullRescan() }, enabled = !scan.running && folders.isNotEmpty()) {
                         Text(if (scan.running) "Taranıyor…" else "Tüm kitapları baştan tara")
                     }

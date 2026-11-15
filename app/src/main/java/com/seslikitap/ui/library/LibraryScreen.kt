@@ -78,6 +78,7 @@ fun LibraryScreen(
     onOpenBook: (Long) -> Unit,
     onOpenReader: (Long) -> Unit,
     onOpenFolders: () -> Unit,
+    onAddDrive: () -> Unit,
 ) {
     val vm = appViewModel { LibraryViewModel(it) }
     val ui by vm.ui.collectAsStateWithLifecycle()
@@ -162,7 +163,7 @@ fun LibraryScreen(
             }
             val noFolders = folders?.isEmpty() == true
             when {
-                noFolders -> EmptyState(onPick = { pickFolder.launch(null) })
+                noFolders -> EmptyState(onPick = { pickFolder.launch(null) }, onDrive = onAddDrive)
                 !ui.loaded -> {}
                 else -> {
                     OutlinedTextField(
@@ -230,7 +231,7 @@ private fun ScanProgress(phase: String, processed: Int, total: Int) {
 }
 
 @Composable
-private fun EmptyState(onPick: () -> Unit) {
+private fun EmptyState(onPick: () -> Unit, onDrive: () -> Unit) {
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.Center,
@@ -245,12 +246,14 @@ private fun EmptyState(onPick: () -> Unit) {
         Text("Kitaplığınız boş", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(8.dp))
         Text(
-            "EPUB kitaplarınızın bulunduğu klasörü seçin. Alt klasörler de taranır.",
+            "EPUB kitaplarınızın bulunduğu klasörü seçin: Google Drive'da ya da telefonda. Alt klasörler de taranır.",
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.height(24.dp))
-        Button(onClick = onPick) { Text("Klasör seç") }
+        Button(onClick = onDrive) { Text("Google Drive'dan seç") }
+        Spacer(Modifier.height(8.dp))
+        androidx.compose.material3.OutlinedButton(onClick = onPick) { Text("Telefondan klasör seç") }
     }
 }
 

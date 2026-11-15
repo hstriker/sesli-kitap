@@ -5,7 +5,10 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
+import com.seslikitap.container
 import com.seslikitap.core.EpubBook
+import com.seslikitap.drive.DriveAuthException
+import com.seslikitap.drive.DriveCache
 import com.seslikitap.core.EpubParser
 import com.seslikitap.core.TurkishText
 import kotlinx.coroutines.CoroutineScope
@@ -68,6 +71,14 @@ class LibraryRepository(
         }
     }
 
+    /** Google Drive klasörü ekler ve taramayı başlatır. */
+    fun addDriveFolder(folderId: String, name: String) {
+        scope.launch {
+            db.folders().upsert(FolderEntity(DriveUri.folder(folderId), name, System.currentTimeMillis()))
+            startScan()
+        }
+    }
+
     fun removeFolder(uri: String) {
         scope.launch {
             val ids = db.books().forFolder(uri).map { it.id }
@@ -75,7 +86,10 @@ class LibraryRepository(
                 db.positions().delete(it)
                 db.bookmarks().deleteForBooks(it)
             }
-            db.books().forFolder(uri).forEach { b -> b.coverPath?.let { File(it).delete() } }
+            db.books().forFolder(uri).forEach { b ->
+                b.coverPath?.let { File(it).delete() }
+                if (DriveUri.isDrive(b.uri)) DriveCache.delete(context, DriveUri.id(b.uri))
+            }
             db.books().deleteFolder(uri)
             db.folders().delete(uri)
             try {
@@ -121,8 +135,12 @@ class LibraryRepository(
             try {
                 val folders = db.folders().all()
                 for (folder in folders) {
+                    val isDrive = DriveUri.isDrive(folder.uri)
                     val found = try {
-                        listEpubs(Uri.parse(folder.uri))
+                        if (isDrive) listDrive(folder) else listEpubs(Uri.parse(folder.uri))
+                    } catch (e: DriveAuthException) {
+                        message = e.message
+                        continue
                     } catch (e: SecurityException) {
                         message = "\"${folder.name}\" klasörüne erişim izni kayboldu. Klasörü kaldırıp yeniden ekleyin."
                         continue
@@ -135,20 +153,29 @@ class LibraryRepository(
                     val todo = found.filter { f ->
                         val e = existing[f.uri]
                         full || e == null || e.sizeBytes != f.size || e.lastModified != f.lastModified ||
-                            e.parserVersion < EpubParser.VERSION
+                            e.parserVersion < EpubParser.VERSION ||
+                            (isDrive && e.status == BookStatus.ERROR) // Drive'da geçici hatalar olabilir: yeniden dene
                     }
                     _scan.update { it.copy(phase = "${folder.name}: ${found.size} kitap bulundu", total = it.total + todo.size) }
 
                     val counter = AtomicInteger(0)
                     val failCounter = AtomicInteger(0)
                     val newCounter = AtomicInteger(0)
-                    val sem = Semaphore(PARALLELISM)
+                    val networkFailures = AtomicInteger(0)
+                    val sem = Semaphore(if (isDrive) DRIVE_PARALLELISM else PARALLELISM)
                     coroutineScope {
                         todo.map { f ->
                             async {
                                 sem.withPermit {
                                     val old = existing[f.uri]
                                     val entity = processFile(folder.uri, f, old)
+                                    if (entity == null) {
+                                        // Ağ hatası: kitabı sorunlu sayma, sonraki taramada yeniden denenir.
+                                        networkFailures.incrementAndGet()
+                                        counter.incrementAndGet()
+                                        _scan.update { it.copy(processed = it.processed + 1) }
+                                        return@withPermit
+                                    }
                                     if (entity.status != BookStatus.OK) failCounter.incrementAndGet()
                                     if (old == null) {
                                         db.books().insert(entity)
@@ -164,12 +191,18 @@ class LibraryRepository(
                         }.awaitAll()
                     }
                     added += newCounter.get()
+                    if (networkFailures.get() > 0) {
+                        message = "${networkFailures.get()} kitap internet sorunu nedeniyle okunamadı; sonraki taramada yeniden denenecek."
+                    }
                     failed += failCounter.get()
 
                     // Klasörden silinmiş kitaplar
                     val foundUris = found.mapTo(HashSet()) { it.uri }
                     val gone = existing.values.filter { it.uri !in foundUris }
-                    gone.forEach { b -> b.coverPath?.let { File(it).delete() } }
+                    gone.forEach { b ->
+                        b.coverPath?.let { File(it).delete() }
+                        if (DriveUri.isDrive(b.uri)) DriveCache.delete(context, DriveUri.id(b.uri))
+                    }
                     gone.map { it.id }.chunked(500).forEach {
                         db.positions().delete(it)
                         db.bookmarks().deleteForBooks(it)
@@ -196,14 +229,18 @@ class LibraryRepository(
 
     fun clearScanMessage() = _scan.update { it.copy(lastMessage = null) }
 
-    private fun processFile(folderUri: String, f: FoundFile, old: BookEntity?): BookEntity {
+    /** Kitabı okuyup kaydı hazırlar. Drive'da ağ hatası olursa null (kayıt değiştirilmez). */
+    private fun processFile(folderUri: String, f: FoundFile, old: BookEntity?): BookEntity? {
         val now = System.currentTimeMillis()
         val fallbackTitle = f.name.substringBeforeLast('.')
         var book: EpubBook? = null
         var coverPath: String? = null
         var error: String? = null
         try {
-            EpubOpener.open(context, Uri.parse(f.uri)).use { zip ->
+            if (old != null && DriveUri.isDrive(f.uri) && old.lastModified != f.lastModified) {
+                DriveCache.delete(context, DriveUri.id(f.uri)) // Drive'da değişmiş: eski kopya geçersiz
+            }
+            EpubOpener.openForScan(context, Uri.parse(f.uri), f.size, f.lastModified, f.name).use { zip ->
                 val b = EpubParser.parse(zip, f.name, includeToc = false)
                 book = b
                 b.coverPath?.let { p -> zip.read(p, 20 * 1024 * 1024) }?.let { bytes ->
@@ -212,6 +249,7 @@ class LibraryRepository(
             }
         } catch (e: Throwable) {
             Log.w(TAG, "Kitap okunamadı: ${f.name}", e)
+            if (DriveUri.isDrive(f.uri) && isNetworkError(e)) return null
             error = when (e) {
                 is OutOfMemoryError -> "Kitap çok büyük, bellek yetmedi"
                 else -> e.message ?: e.javaClass.simpleName
@@ -245,6 +283,24 @@ class LibraryRepository(
             addedAt = old?.addedAt ?: now,
         )
     }
+
+    private fun isNetworkError(e: Throwable): Boolean {
+        var t: Throwable? = e
+        while (t != null) {
+            if (t is DriveAuthException || t is java.net.UnknownHostException || t is java.net.SocketTimeoutException ||
+                t is java.net.SocketException || t is javax.net.ssl.SSLException
+            ) return true
+            val m = t.message.orEmpty()
+            if (m.contains("Google Drive hatası (5") || m.contains("429")) return true
+            t = t.cause
+        }
+        return false
+    }
+
+    private fun listDrive(folder: FolderEntity): List<FoundFile> =
+        context.container.drive.listEpubsRecursive(DriveUri.id(folder.uri)) { folders, books ->
+            _scan.update { it.copy(phase = "${folder.name}: $folders klasör, $books kitap bulundu…") }
+        }.map { FoundFile(DriveUri.file(it.item.id), it.item.name, it.item.size, it.item.modified, it.relativePath) }
 
     /** Klasör ağacını DocumentsContract ile dolaşır (DocumentFile'dan çok daha hızlı). */
     private fun listEpubs(treeUri: Uri): List<FoundFile> {
@@ -299,5 +355,6 @@ class LibraryRepository(
     companion object {
         private const val TAG = "LibraryRepository"
         private const val PARALLELISM = 4
+        private const val DRIVE_PARALLELISM = 6
     }
 }
