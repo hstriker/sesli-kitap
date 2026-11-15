@@ -13,6 +13,28 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.LibraryBooks
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.seslikitap.ui.MiniPlayer
+import com.seslikitap.ui.home.HomeScreen
+import com.seslikitap.ui.stats.StatsScreen
 import androidx.navigation.navArgument
 import com.seslikitap.ui.book.BookDetailScreen
 import com.seslikitap.ui.folders.DrivePickerScreen
@@ -51,57 +73,114 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private data class Tab(val route: String, val label: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
+
+private val TABS = listOf(
+    Tab("home", "Ana Sayfa", Icons.Default.Home),
+    Tab("library", "Kitaplık", Icons.AutoMirrored.Filled.LibraryBooks),
+    Tab("stats", "İstatistik", Icons.Default.BarChart),
+    Tab("settings", "Ayarlar", Icons.Default.Settings),
+)
+
 @Composable
 private fun AppNavigation(openPlayer: MutableState<Boolean>) {
     val nav = rememberNavController()
-    val player = androidx.compose.ui.platform.LocalContext.current.container.player
+    val player = LocalContext.current.container.player
+    val playerState by player.state.collectAsStateWithLifecycle()
+    val backStack by nav.currentBackStackEntryAsState()
+    val route = backStack?.destination?.route
+    val onTab = TABS.any { it.route == route }
+
+    fun goTab(r: String) = nav.navigate(r) {
+        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+    val openReader: (Long) -> Unit = { id -> nav.navigate("reader/$id") { launchSingleTop = true } }
+    val openBook: (Long) -> Unit = { id -> nav.navigate("book/$id") }
 
     LaunchedEffect(openPlayer.value) {
         if (openPlayer.value) {
             openPlayer.value = false
-            player.state.value.bookId?.let { id ->
-                nav.navigate("reader/$id") { launchSingleTop = true }
-            }
+            player.state.value.bookId?.let(openReader)
         }
     }
 
-    NavHost(navController = nav, startDestination = "library") {
-        composable("library") {
-            LibraryScreen(
-                onOpenBook = { id -> nav.navigate("book/$id") },
-                onOpenReader = { id -> nav.navigate("reader/$id") { launchSingleTop = true } },
-                onOpenFolders = { nav.navigate("folders") },
-                onAddDrive = { nav.navigate("drive") },
-            )
-        }
-        composable(
-            "book/{id}",
-            arguments = listOf(navArgument("id") { type = NavType.LongType }),
-        ) { entry ->
-            val id = entry.arguments?.getLong("id") ?: 0L
-            BookDetailScreen(
-                bookId = id,
-                onBack = { nav.popBackStack() },
-                onListen = { nav.navigate("reader/$id") { launchSingleTop = true } },
-            )
-        }
-        composable(
-            "reader/{id}",
-            arguments = listOf(navArgument("id") { type = NavType.LongType }),
-        ) { entry ->
-            ReaderScreen(
-                bookId = entry.arguments?.getLong("id") ?: 0L,
-                onBack = { nav.popBackStack() },
-            )
-        }
-        composable("folders") {
-            FoldersScreen(onBack = { nav.popBackStack() }, onAddDrive = { nav.navigate("drive") })
-        }
-        composable("drive") {
-            DrivePickerScreen(
-                onBack = { nav.popBackStack() },
-                onAdded = { nav.popBackStack("library", inclusive = false) },
-            )
+    Scaffold(
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
+            if (onTab) {
+                Column {
+                    if (playerState.active) {
+                        MiniPlayer(
+                            playerState,
+                            onClick = { playerState.bookId?.let(openReader) },
+                            onToggle = { player.toggle() },
+                        )
+                    }
+                    NavigationBar {
+                        TABS.forEach { t ->
+                            NavigationBarItem(
+                                selected = route == t.route,
+                                onClick = { goTab(t.route) },
+                                icon = { Icon(t.icon, null) },
+                                label = { Text(t.label) },
+                            )
+                        }
+                    }
+                }
+            }
+        },
+    ) { outer ->
+        NavHost(navController = nav, startDestination = "home", modifier = Modifier.padding(outer)) {
+            composable("home") {
+                HomeScreen(
+                    onOpenBook = openBook,
+                    onOpenReader = openReader,
+                    onOpenLibraryFolder = { goTab("library") },
+                    onOpenSettings = { goTab("settings") },
+                )
+            }
+            composable("library") {
+                LibraryScreen(
+                    onOpenBook = openBook,
+                    onOpenReader = openReader,
+                    onOpenFolders = { goTab("settings") },
+                    onAddDrive = { nav.navigate("drive") },
+                )
+            }
+            composable("stats") {
+                StatsScreen(onOpenBook = openBook)
+            }
+            composable("settings") {
+                FoldersScreen(onBack = null, onAddDrive = { nav.navigate("drive") })
+            }
+            composable(
+                "book/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) { entry ->
+                val id = entry.arguments?.getLong("id") ?: 0L
+                BookDetailScreen(
+                    bookId = id,
+                    onBack = { nav.popBackStack() },
+                    onListen = { openReader(id) },
+                )
+            }
+            composable(
+                "reader/{id}",
+                arguments = listOf(navArgument("id") { type = NavType.LongType }),
+            ) { entry ->
+                ReaderScreen(
+                    bookId = entry.arguments?.getLong("id") ?: 0L,
+                    onBack = { nav.popBackStack() },
+                )
+            }
+            composable("drive") {
+                DrivePickerScreen(
+                    onBack = { nav.popBackStack() },
+                    onAdded = { nav.popBackStack(); goTab("library") },
+                )
+            }
         }
     }
 }

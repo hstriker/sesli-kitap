@@ -73,6 +73,11 @@ class BookDetailViewModel(private val container: AppContainer, private val bookI
         }
     }
 
+    fun toggleFavorite() {
+        val e = entity.value ?: return
+        viewModelScope.launch { repo.setFavorite(e.id, !e.favorite) }
+    }
+
     fun closePreview() {
         preview.value = null
     }

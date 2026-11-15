@@ -202,6 +202,46 @@ class Player(
         scope.launch(Dispatchers.IO) { if (index + 1 < c.chapterCount) runCatching { c.chapter(index + 1) } }
     }
 
+    // ------------------------------------------------------------------ Dinleme süresi
+
+    private var listenStart = 0L
+    private var listenJob: Job? = null
+
+    private fun startListenClock() {
+        listenStart = System.currentTimeMillis()
+        listenJob?.cancel()
+        listenJob = scope.launch {
+            while (true) {
+                delay(30_000)
+                flushListening()
+            }
+        }
+    }
+
+    private fun stopListenClock() {
+        listenJob?.cancel()
+        listenJob = null
+        flushListening()
+        listenStart = 0L
+    }
+
+    /** Geçen dinleme süresini güne ve kitaba yazar. */
+    private fun flushListening() {
+        val start = listenStart
+        val id = _state.value.bookId
+        if (start == 0L || id == null) return
+        val now = System.currentTimeMillis()
+        val ms = (now - start).coerceIn(0, 10 * 60_000L)
+        listenStart = now
+        if (ms < 1000) return
+        val day = java.time.LocalDate.now().toString()
+        scope.launch(Dispatchers.IO) {
+            db.listening().ensure(day)
+            db.listening().add(day, ms)
+            db.books().addListened(id, ms)
+        }
+    }
+
     // ------------------------------------------------------------------ Oynatma
 
     fun play() {
@@ -210,6 +250,7 @@ class Player(
         if (!requestFocus()) return
         val e = engine()
         _state.update { it.copy(playing = true, error = null, finished = false) }
+        startListenClock()
         PlaybackService.start(context)
         if (e.status.value != EngineStatus.Ready) {
             scope.launch {
@@ -224,6 +265,7 @@ class Player(
 
     fun pause() {
         if (!_state.value.playing) return
+        stopListenClock()
         generation++
         engine?.stop()
         _state.update { it.copy(playing = false) }

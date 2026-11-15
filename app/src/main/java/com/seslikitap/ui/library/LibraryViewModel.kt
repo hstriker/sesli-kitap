@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.text.Collator
 
 enum class SortOrder(val label: String) {
@@ -156,8 +157,18 @@ class LibraryViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     init {
-        // Açılışta hızlı artımlı tarama: sadece yeni/değişen dosyalar okunur.
-        repo.autoScan()
+        // Ana sayfadaki klasör kısayolundan gelindiyse o klasörü aç
+        viewModelScope.launch {
+            container.pendingLibraryPath.collect { p ->
+                if (p != null) {
+                    setBrowse(true)
+                    query.value = ""
+                    filter.value = LibraryFilter.ALL
+                    path.value = p
+                    container.pendingLibraryPath.value = null
+                }
+            }
+        }
     }
 
     fun setSort(s: SortOrder) {

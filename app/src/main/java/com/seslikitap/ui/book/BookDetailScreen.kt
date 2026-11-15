@@ -21,6 +21,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -63,6 +65,16 @@ fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onListen: () -> Unit) {
                 title = { Text(entity?.title ?: "", maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
+                },
+                actions = {
+                    val fav = entity?.favorite == true
+                    IconButton(onClick = { vm.toggleFavorite() }) {
+                        Icon(
+                            if (fav) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            if (fav) "Favorilerden çıkar" else "Favorilere ekle",
+                            tint = if (fav) androidx.compose.ui.graphics.Color(0xFFE53950) else MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                 },
             )
         },

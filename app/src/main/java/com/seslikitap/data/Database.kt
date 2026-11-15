@@ -1,7 +1,10 @@
 package com.seslikitap.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.room.Database
 import androidx.room.Entity
 import androidx.room.Index
@@ -48,6 +51,16 @@ data class BookEntity(
     /** 0..1 arası okuma ilerlemesi (seslendirme aşamasında dolacak). */
     val progress: Float = 0f,
     val finished: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val favorite: Boolean = false,
+    /** Bu kitabı toplam dinleme süresi (ms). */
+    @ColumnInfo(defaultValue = "0") val listenedMs: Long = 0,
+)
+
+/** Günlük dinleme süresi. day: "2026-11-15" */
+@Entity(tableName = "listening")
+data class ListeningDay(
+    @PrimaryKey val day: String,
+    val ms: Long,
 )
 
 @Entity(tableName = "folders")
@@ -116,6 +129,12 @@ interface BookDao {
 
     @Query("UPDATE books SET finished = :finished WHERE id = :id")
     suspend fun setFinished(id: Long, finished: Boolean)
+
+    @Query("UPDATE books SET favorite = :favorite WHERE id = :id")
+    suspend fun setFavorite(id: Long, favorite: Boolean)
+
+    @Query("UPDATE books SET listenedMs = listenedMs + :ms WHERE id = :id")
+    suspend fun addListened(id: Long, ms: Long)
 }
 
 @Dao
@@ -160,9 +179,24 @@ interface BookmarkDao {
     suspend fun deleteForBooks(ids: List<Long>)
 }
 
+@Dao
+interface ListeningDao {
+    @Query("INSERT OR IGNORE INTO listening(day, ms) VALUES(:day, 0)")
+    suspend fun ensure(day: String)
+
+    @Query("UPDATE listening SET ms = ms + :ms WHERE day = :day")
+    suspend fun add(day: String, ms: Long)
+
+    @Query("SELECT * FROM listening ORDER BY day")
+    fun observeAll(): Flow<List<ListeningDay>>
+}
+
 @Database(
-    entities = [BookEntity::class, FolderEntity::class, PositionEntity::class, BookmarkEntity::class],
-    version = 1,
+    entities = [
+        BookEntity::class, FolderEntity::class, PositionEntity::class, BookmarkEntity::class,
+        ListeningDay::class,
+    ],
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -170,9 +204,23 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun folders(): FolderDao
     abstract fun positions(): PositionDao
     abstract fun bookmarks(): BookmarkDao
+    abstract fun listening(): ListeningDao
 
     companion object {
+        /** 1 → 2: favoriler, kitap başına dinleme süresi, günlük dinleme tablosu. Mevcut veriler korunur. */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE books ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE books ADD COLUMN listenedMs INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `listening` (`day` TEXT NOT NULL, `ms` INTEGER NOT NULL, PRIMARY KEY(`day`))"
+                )
+            }
+        }
+
         fun build(context: Context): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, "seslikitap.db").build()
+            Room.databaseBuilder(context, AppDatabase::class.java, "seslikitap.db")
+                .addMigrations(MIGRATION_1_2)
+                .build()
     }
 }

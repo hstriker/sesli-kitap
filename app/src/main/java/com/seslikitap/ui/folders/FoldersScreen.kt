@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.seslikitap.ui.folders
 
@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.foundation.layout.width
 import com.seslikitap.data.DriveUri
+import com.seslikitap.container
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -64,7 +65,8 @@ class FoldersViewModel(container: AppContainer) : ViewModel() {
 }
 
 @Composable
-fun FoldersScreen(onBack: () -> Unit, onAddDrive: () -> Unit) {
+/** Ayarlar sekmesi: kitap klasörleri, günlük hedef, tanı kaydı. [onBack] null ise sekme olarak gösterilir. */
+fun FoldersScreen(onBack: (() -> Unit)?, onAddDrive: () -> Unit) {
     val vm = appViewModel { FoldersViewModel(it) }
     val folders by vm.folders.collectAsStateWithLifecycle()
     val counts by vm.counts.collectAsStateWithLifecycle()
@@ -72,17 +74,22 @@ fun FoldersScreen(onBack: () -> Unit, onAddDrive: () -> Unit) {
     var confirmRemove by remember { mutableStateOf<FolderEntity?>(null) }
     var showLog by remember { mutableStateOf(false) }
     val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = context.container.prefs
 
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) vm.add(uri)
     }
 
     Scaffold(
+        contentWindowInsets = if (onBack == null) androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0)
+        else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
         topBar = {
             TopAppBar(
-                title = { Text("Kitap klasörleri") },
+                title = { Text("Ayarlar") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
+                    }
                 },
             )
         },
@@ -96,6 +103,11 @@ fun FoldersScreen(onBack: () -> Unit, onAddDrive: () -> Unit) {
     ) { padding ->
         LazyColumn(Modifier.fillMaxSize().padding(padding)) {
             item {
+                Text(
+                    "Kitap klasörleri",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 16.dp, top = 8.dp),
+                )
                 Text(
                     "Eklediğiniz klasörler ve tüm alt klasörleri taranır. Uygulama her açılışta yeni eklenen " +
                         "ya da değişen kitapları otomatik bulur.",
@@ -139,10 +151,42 @@ fun FoldersScreen(onBack: () -> Unit, onAddDrive: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
                     )
+                    Spacer(Modifier.height(24.dp))
+                    HorizontalDivider()
                     Spacer(Modifier.height(16.dp))
+                    Text("Günlük dinleme hedefi", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Ana sayfadaki halka bu hedefe göre dolar.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    var goal by remember { mutableStateOf(prefs.dailyGoalMin) }
+                    androidx.compose.foundation.layout.FlowRow(
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(10, 15, 30, 45, 60, 90, 120).forEach { m ->
+                            androidx.compose.material3.FilterChip(
+                                selected = goal == m,
+                                onClick = { goal = m; prefs.dailyGoalMin = m },
+                                label = { Text(if (m < 60) "$m dk" else "${m / 60} sa" + if (m % 60 != 0) " ${m % 60} dk" else "") },
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    HorizontalDivider()
+                    Spacer(Modifier.height(8.dp))
                     androidx.compose.material3.TextButton(onClick = { showLog = true }) {
                         Text("Tanı kaydı (sorun bildirmek için)")
                     }
+                    Text(
+                        "Sesli Kitap · sürüm " + runCatching {
+                            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                        }.getOrNull().orEmpty(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
                     Spacer(Modifier.height(96.dp))
                 }
             }

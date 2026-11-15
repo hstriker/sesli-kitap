@@ -31,6 +31,8 @@ class AppContainer(context: Context) {
     val library = LibraryRepository(context, db, appScope, prefs)
     val player by lazy { Player(appContext, db, prefs) }
     val driveAuth by lazy { DriveAuth(appContext) }
+    /** Ana sayfadan kitaplıkta belirli bir klasörü açmak için. */
+    val pendingLibraryPath = kotlinx.coroutines.flow.MutableStateFlow<List<String>?>(null)
     val drive by lazy { DriveApi(driveAuth) }
 }
 
@@ -45,6 +47,11 @@ class Prefs(context: Context) {
     var libraryBrowse: Boolean
         get() = sp.getBoolean("library_browse", true)
         set(v) = sp.edit().putBoolean("library_browse", v).apply()
+
+    /** Günlük dinleme hedefi (dakika). */
+    var dailyGoalMin: Int
+        get() = sp.getInt("daily_goal_min", 30)
+        set(v) = sp.edit().putInt("daily_goal_min", v).apply()
 
     var speechRate: Float
         get() = sp.getFloat("speech_rate", 1f)

@@ -91,8 +91,6 @@ fun LibraryScreen(
     val query by vm.query.collectAsStateWithLifecycle()
     val sort by vm.sort.collectAsStateWithLifecycle()
     val filter by vm.filter.collectAsStateWithLifecycle()
-    val player = LocalContext.current.container.player
-    val playerState by player.state.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var sortMenu by remember { mutableStateOf(false) }
 
@@ -111,6 +109,7 @@ fun LibraryScreen(
     }
 
     Scaffold(
+        contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
                 title = {
@@ -154,19 +153,6 @@ fun LibraryScreen(
                     }
                 },
             )
-        },
-        bottomBar = {
-            if (playerState.active) {
-                MiniPlayer(
-                    title = playerState.bookTitle,
-                    subtitle = playerState.chapterTitle,
-                    coverPath = playerState.coverPath,
-                    author = playerState.author,
-                    playing = playerState.playing,
-                    onClick = { playerState.bookId?.let(onOpenReader) },
-                    onToggle = { player.toggle() },
-                )
-            }
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
@@ -408,40 +394,6 @@ private fun BookTile(book: BookEntity, showPath: Boolean, onClick: () -> Unit) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-        }
-    }
-}
-
-@Composable
-private fun MiniPlayer(
-    title: String,
-    subtitle: String,
-    coverPath: String?,
-    author: String,
-    playing: Boolean,
-    onClick: () -> Unit,
-    onToggle: () -> Unit,
-) {
-    Surface(tonalElevation = 3.dp, shadowElevation = 8.dp, modifier = Modifier.clickable(onClick = onClick)) {
-        Row(
-            Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            BookCover(
-                coverPath, title, author,
-                Modifier.width(40.dp).height(58.dp).clip(RoundedCornerShape(4.dp)),
-            )
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    subtitle, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            IconButton(onClick = onToggle) {
-                Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Duraklat" else "Dinle")
-            }
         }
     }
 }

@@ -57,6 +57,8 @@ class LibraryRepository(
     fun observeBook(id: Long) = db.books().observe(id)
     suspend fun getBook(id: Long) = db.books().get(id)
     suspend fun markOpened(id: Long) = db.books().markOpened(id, System.currentTimeMillis())
+    suspend fun setFavorite(id: Long, favorite: Boolean) = db.books().setFavorite(id, favorite)
+    val listening = db.listening().observeAll()
 
     // ------------------------------------------------------------------ Klasörler
 
@@ -229,7 +231,8 @@ class LibraryRepository(
                                         db.books().insert(entity)
                                     } else {
                                         db.books().update(entity.copy(id = old.id, addedAt = old.addedAt,
-                                            lastOpenedAt = old.lastOpenedAt, progress = old.progress, finished = old.finished))
+                                            lastOpenedAt = old.lastOpenedAt, progress = old.progress, finished = old.finished,
+                                            favorite = old.favorite, listenedMs = old.listenedMs))
                                     }
                                     val done = counter.incrementAndGet()
                                     _scan.update { it.copy(processed = it.processed + 1, phase = "Kitaplar okunuyor… ($done/${todo.size})") }
