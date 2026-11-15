@@ -35,6 +35,8 @@ Veritabanı göçleri (1→2→3) gerçek veriyle denenmedi. İlk açılışta a
 - AI Studio → Rate Limit'te görüldü: model **Gemini 3.8 Flash TTS**, ücretsiz: **3 RPM, 10K TPM, 10 RPD**.
   Bu yüzden parça 5000-6500 karakter (~5-7 dk), istekler sırayla (Mutex); günde ~50-60 dk Gemini sesi beklenir.
   Kalan sınır Ayarlar → Gemini sesi ve okuyucu ses ayarlarında (`GeminiTts.quotaSummary`).
+- Model sırası: 3.8 Flash → 3.8 Flash-Lite → diğer TTS (her biri ayrı 10 RPD; 0 sınırlılar atlanır) → telefon sesi.
+  Emre Flash-Lite'ı da "çok iyi" buldu. İkinci Google hesabı ile kota katlama önerisini REDDETTİM (Google kuralları); yapma.
 - Doğrulanacak: uzun parçada ses kesiliyor mu (tanı kaydında "Gemini parça: … karakter/sn"; normal ~13-15),
   ilk parçanın bekleme süresi, anlatıcı talimatının sesli okunması (prompt `anlatici2` ile düzeltildi mi?).
 
