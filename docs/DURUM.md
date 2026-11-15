@@ -52,7 +52,12 @@ Amaç: uygulama "yoğun hayattan kaçış ve rahatlama alanı" olacak; yalnızca
   9 "Bugün nasılsın?" ruh hâline göre öneri, 10 sesli macera (seçimli hikâye), 11 günün alıntısı (ana ekran/widget),
   12 akşam sesli notu (yalnızca telefonda), 13 baskısız istatistik dili, 14 yürüyüş modu.
   (B1 arka plan sesleri, B2 kitaba göre ortam, B7 yumuşak kapanış seçilmedi.)
-- Ek liste (C: mini oyunlar vb.) önerildi, seçim bekleniyor.
+- **C (tamamı, "hepsine bayıldım"):** 1 zen bahçesi, 2 kabarcık patlatma, 3 mandala boyama, 4 kapaktan kayar yapboz,
+  5 kelime avı (kitaptan), 6 eksik kelime (alıntılardan), 7 hangi kitaptan?, 8 kapaklarla hafıza kartları,
+  9 sudoku + solitaire (baskısız), 10 nefes balonu, 11 okuma haritası, 12 sanal kitap rafı odası, 13 tek kişilik kitap
+  kulübü (Gemini soruları), 14 yıllık okuma kartı, 15 geleceğe mektup, 16 nazik hatırlatıcı, 17 temalar, 18 havaya göre öneri.
+  Oyunlar özgün olmalı (belirli bir oyunun kopyası değil).
+- B1/B7 seçilmedi mi diye soruldu, yanıt bekleniyor. D listesi önerildi.
 
 ## Kararlar
 
