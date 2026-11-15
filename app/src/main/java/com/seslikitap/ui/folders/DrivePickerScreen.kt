@@ -196,7 +196,7 @@ fun DrivePickerScreen(onBack: () -> Unit, onAdded: () -> Unit) {
                         Spacer(Modifier.height(8.dp))
                         Button(
                             onClick = { vm.addCurrent(); onAdded() },
-                            enabled = !ui.loading,
+                            enabled = !ui.loading && ui.error == null,
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text("\"$name\" klasörünü ekle") }
                     }
