@@ -97,6 +97,13 @@ class CloudTtsEngine(
         player = null
     }
 
+    @Volatile private var volume = 1f
+
+    override fun setVolume(volume: Float) {
+        this.volume = volume
+        playScope.launch { runCatching { player?.setVolume(volume, volume) } }
+    }
+
     override fun setRate(rate: Float) { this.rate = rate }
     override fun setPitch(pitch: Float) { this.pitch = pitch }
 
@@ -157,6 +164,7 @@ class CloudTtsEngine(
                 true
             }
             mp.prepare()
+            mp.setVolume(volume, volume)
             mp.start()
         } catch (e: Exception) {
             Kayit.error("Ses çalınamadı", e)

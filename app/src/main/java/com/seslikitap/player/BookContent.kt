@@ -101,5 +101,51 @@ class BookContent(
         return null
     }
 
+    /** Bölümün seslendirilecek karakter sayısı. */
+    fun chapterLength(index: Int): Int = chapter(index).let { ch -> ch.sentences.sumOf { it.end - it.start } }
+
+    /** Paragrafın ilk cümlesi; zaten oradaysa bir önceki paragrafın ilk cümlesi ("kaçırdım"). */
+    fun paragraphStart(ch: Chapter, sentence: Int): Int {
+        if (ch.sentences.isEmpty()) return 0
+        val s = sentence.coerceIn(0, ch.sentences.size - 1)
+        val first = s - ch.sentenceInBlock(s)
+        if (s - first >= 1) return first
+        if (first == 0) return 0
+        return (first - 1) - ch.sentenceInBlock(first - 1)
+    }
+
     override fun close() = zip.close()
+}
+
+/**
+ * Kitapların bölüm uzunlukları (karakter). Bir kez hesaplanır, dosyada saklanır;
+ * kalan süre ve tahmini dinleme süresi için kullanılır.
+ */
+object ChapterLengthStore {
+    private fun file(context: android.content.Context, bookId: Long) =
+        java.io.File(java.io.File(context.filesDir, "uzunluk").apply { mkdirs() }, "$bookId.txt")
+
+    fun load(context: android.content.Context, bookId: Long): IntArray? = try {
+        file(context, bookId).takeIf { it.exists() }?.readText()?.split(',')?.map { it.trim().toInt() }?.toIntArray()
+    } catch (e: Exception) {
+        null
+    }
+
+    fun save(context: android.content.Context, bookId: Long, lengths: IntArray) {
+        try { file(context, bookId).writeText(lengths.joinToString(",")) } catch (_: Exception) {}
+    }
+
+    /** Kayıtlıysa onu, değilse hesaplayıp kaydeder (arka planda çağırın). */
+    fun getOrCompute(context: android.content.Context, content: BookContent): IntArray {
+        load(context, content.bookId)?.takeIf { it.size == content.chapterCount }?.let { return it }
+        val lens = IntArray(content.chapterCount) { i -> runCatching { content.chapterLength(i) }.getOrDefault(0) }
+        save(context, content.bookId, lens)
+        return lens
+    }
+}
+
+/** Ms cinsinden süreyi "6 sa 20 dk" / "14 dk" biçiminde yazar. */
+fun formatDuration(ms: Long): String {
+    val min = (ms / 60_000L).coerceAtLeast(if (ms > 0) 1L else 0L)
+    return if (min < 60) "$min dk" else "${min / 60} sa ${min % 60} dk"
 }

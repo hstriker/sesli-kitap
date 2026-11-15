@@ -53,6 +53,8 @@ data class PlayerState(
     val error: String? = null,
     val engine: EngineStatus = EngineStatus.Initializing,
     val finished: Boolean = false,
+    /** Kitabın bölüm uzunlukları hesaplandı (kitabın kalan süresi gösterilebilir). */
+    val lengthsReady: Boolean = false,
 ) {
     val active get() = bookId != null
 }
@@ -165,7 +167,7 @@ class Player(
         openJob = scope.launch {
             pause()
             engine()
-            _state.update { it.copy(loading = true, error = null, bookId = bookId) }
+            _state.update { it.copy(loading = true, error = null, bookId = bookId, lengthsReady = false) }
             val t0 = System.currentTimeMillis()
             Kayit.log("Kitap açılıyor: $bookId")
             try {
@@ -204,6 +206,11 @@ class Player(
                     )
                 }
                 showChapter(startChapter, if (startChapter == ch) sentence else 0)
+                chapterLengths = null
+                scope.launch(Dispatchers.IO) {
+                    val lens = ChapterLengthStore.getOrCompute(context, newContent)
+                    if (content === newContent) { chapterLengths = lens; _state.update { it.copy(lengthsReady = true) } }
+                }
                 Kayit.log("Kitap açıldı: ${entity.title} (${System.currentTimeMillis() - t0} ms)")
                 if (autoPlay) play()
             } catch (e: Throwable) {
@@ -357,6 +364,7 @@ class Player(
             val (gen, ch, s) = parseId(id) ?: return@launch
             if (gen != generation || ch != _state.value.chapterIndex) return@launch
             consecutiveErrors = 0
+            measureSpeed(ch, s)
             _state.update { it.copy(sentenceIndex = s) }
             savePosition()
         }
@@ -515,15 +523,92 @@ class Player(
         resetEngine()
     }
 
+    // ------------------------------------------------------------------ Kalan süre
+
+    @Volatile private var chapterLengths: IntArray? = null
+    private var lastStartAt = 0L
+    private var lastStartChapter = -1
+    private var lastStartSentence = -1
+
+    /** Cümleler arasındaki süreden gerçek okuma hızını öğrenir (hız 1,0'a göre saniyedeki karakter). */
+    private fun measureSpeed(chapter: Int, sentence: Int) {
+        val now = System.currentTimeMillis()
+        val ch = _chapter.value
+        if (ch != null && chapter == lastStartChapter && sentence == lastStartSentence + 1 &&
+            lastStartSentence in ch.sentences.indices
+        ) {
+            val elapsed = now - lastStartAt
+            val chars = ch.sentences[lastStartSentence].let { it.end - it.start }
+            if (elapsed in 400..30_000 && chars >= 20) {
+                val sample = chars / (elapsed / 1000f) / _state.value.rate.coerceAtLeast(0.3f)
+                if (sample in 5f..40f) {
+                    cps = cps * 0.95f + sample * 0.05f
+                    if (++speedSamples % 20 == 0) prefs.charsPerSecond = cps
+                }
+            }
+        }
+        lastStartAt = now
+        lastStartChapter = chapter
+        lastStartSentence = sentence
+    }
+
+    private var cps = prefs.charsPerSecond
+    private var speedSamples = 0
+
+    /** (bölümün kalanı, kitabın kalanı) ms; kitap uzunlukları henüz hesaplanmadıysa ikincisi null. */
+    fun remainingMs(): Pair<Long, Long?> {
+        val st = _state.value
+        val ch = _chapter.value ?: return 0L to null
+        var chars = 0L
+        for (i in st.sentenceIndex until ch.sentences.size) chars += ch.sentences[i].let { it.end - it.start }
+        val perSecond = cps * st.rate.coerceAtLeast(0.3f)
+        val chapterMs = (chars / perSecond * 1000).toLong()
+        val lens = chapterLengths ?: return chapterMs to null
+        var rest = 0L
+        for (i in (ch.index + 1) until lens.size) rest += lens[i]
+        return chapterMs to chapterMs + (rest / perSecond * 1000).toLong()
+    }
+
+    /** Tahmini toplam dinleme süresi (ms) — kayıtlı bölüm uzunluklarından. */
+    fun estimatedTotalMs(lengths: IntArray): Long = (lengths.sum() / (cps * _state.value.rate.coerceAtLeast(0.3f)) * 1000).toLong()
+
+    // ------------------------------------------------------------------ Kaçırdım
+
+    /** Paragrafın başına (zaten baştaysa bir önceki paragrafa) döner. */
+    fun replayParagraph() {
+        val c = content ?: return
+        val ch = _chapter.value ?: return
+        val target = c.paragraphStart(ch, _state.value.sentenceIndex)
+        if (target == _state.value.sentenceIndex && target == 0) previousSentence() else seek(ch.index, target)
+    }
+
     // ------------------------------------------------------------------ Uyku zamanlayıcısı
+
+    private var fadeVolume = 1f
+
+    private fun setVolume(v: Float) {
+        fadeVolume = v
+        engine?.setVolume(v)
+    }
 
     fun setSleepTimer(minutes: Int) {
         cancelSleepTimer()
-        val end = System.currentTimeMillis() + minutes * 60_000L
+        val total = minutes * 60_000L
+        val end = System.currentTimeMillis() + total
         _state.update { it.copy(sleepAt = end, sleepAtChapterEnd = false) }
+        startShakeDetection()
         sleepJob = scope.launch {
-            delay(minutes * 60_000L)
+            // Son dakikada ses yavaşça kısılır
+            val fade = minOf(60_000L, total / 2)
+            delay(total - fade)
+            val steps = 12
+            for (i in 1..steps) {
+                setVolume(1f - 0.85f * i / steps)
+                delay(fade / steps)
+            }
             pause()
+            setVolume(1f)
+            stopShakeDetection()
             _state.update { it.copy(sleepAt = null) }
         }
     }
@@ -536,7 +621,45 @@ class Player(
     fun cancelSleepTimer() {
         sleepJob?.cancel()
         sleepJob = null
+        stopShakeDetection()
+        if (fadeVolume != 1f) setVolume(1f)
         _state.update { it.copy(sleepAt = null, sleepAtChapterEnd = false) }
+    }
+
+    // Telefonu sallayınca uyku zamanlayıcısı 10 dk uzar
+    private val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
+    private var lastShake = 0L
+    private val shakeListener = object : android.hardware.SensorEventListener {
+        override fun onSensorChanged(e: android.hardware.SensorEvent) {
+            val (x, y, z) = Triple(e.values[0], e.values[1], e.values[2])
+            val g = kotlin.math.sqrt(x * x + y * y + z * z) / android.hardware.SensorManager.GRAVITY_EARTH
+            val now = System.currentTimeMillis()
+            if (g > 2.6f && now - lastShake > 2000) {
+                lastShake = now
+                scope.launch { extendSleepByShake() }
+            }
+        }
+        override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
+    }
+    private var shakeRegistered = false
+
+    private fun startShakeDetection() {
+        if (shakeRegistered) return
+        val acc = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER) ?: return
+        shakeRegistered = sensorManager.registerListener(shakeListener, acc, android.hardware.SensorManager.SENSOR_DELAY_UI)
+    }
+
+    private fun stopShakeDetection() {
+        if (!shakeRegistered) return
+        sensorManager.unregisterListener(shakeListener)
+        shakeRegistered = false
+    }
+
+    private fun extendSleepByShake() {
+        val at = _state.value.sleepAt ?: return
+        val leftMin = ((at - System.currentTimeMillis()) / 60_000L).toInt().coerceAtLeast(0)
+        setSleepTimer(leftMin + 10)
+        _state.update { it.copy(error = "Uyku zamanlayıcısı 10 dakika uzatıldı") }
     }
 
     // ------------------------------------------------------------------ Yer imleri ve konum

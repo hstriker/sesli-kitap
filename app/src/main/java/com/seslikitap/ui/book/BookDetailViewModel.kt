@@ -10,6 +10,9 @@ import com.seslikitap.core.SentenceSplitter
 import com.seslikitap.data.BookEntity
 import com.seslikitap.data.BookStatus
 import com.seslikitap.data.EpubOpener
+import com.seslikitap.core.ExtractOptions
+import com.seslikitap.player.BookContent
+import com.seslikitap.player.ChapterLengthStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -36,6 +39,8 @@ class BookDetailViewModel(private val container: AppContainer, private val bookI
     val book = MutableStateFlow<EpubBook?>(null)
     val loadError = MutableStateFlow<String?>(null)
     val preview = MutableStateFlow<ChapterPreview?>(null)
+    /** Tahmini toplam dinleme süresi (ms). */
+    val totalMs = MutableStateFlow<Long?>(null)
 
     init {
         viewModelScope.launch {
@@ -45,8 +50,19 @@ class BookDetailViewModel(private val container: AppContainer, private val bookI
                 loadError.value = e.errorMessage ?: "Kitap açılamadı"
             }
             try {
-                book.value = repo.openBook(e)
+                val b = repo.openBook(e)
+                book.value = b
                 loadError.value = null
+                // Tahmini dinleme süresi: bölüm uzunlukları kayıtlı değilse arka planda hesaplanır
+                val lens = withContext(Dispatchers.IO) {
+                    ChapterLengthStore.load(context, e.id)?.takeIf { it.size == b.spine.size } ?: runCatching {
+                        EpubOpener.open(context, Uri.parse(e.uri)).let { zip ->
+                            BookContent(e.id, b, zip, ExtractOptions(container.prefs.skipFootnotes, container.prefs.skipPageNumbers))
+                                .use { content -> ChapterLengthStore.getOrCompute(context, content) }
+                        }
+                    }.getOrNull()
+                }
+                if (lens != null) totalMs.value = container.player.estimatedTotalMs(lens)
             } catch (t: Throwable) {
                 loadError.value = t.message ?: "Kitap açılamadı"
             }

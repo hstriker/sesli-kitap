@@ -88,6 +88,11 @@ class Prefs(context: Context) {
         sp.edit().putString("cloud_month", month).putLong("cloud_chars", current + n).apply()
     }
 
+    /** Ölçülen okuma hızı (hız 1,0'da saniyedeki karakter); kalan süre tahmini için. */
+    var charsPerSecond: Float
+        get() = sp.getFloat("chars_per_second", 14f)
+        set(v) = sp.edit().putFloat("chars_per_second", v).apply()
+
     var speechRate: Float
         get() = sp.getFloat("speech_rate", 1f)
         set(v) = sp.edit().putFloat("speech_rate", v).apply()

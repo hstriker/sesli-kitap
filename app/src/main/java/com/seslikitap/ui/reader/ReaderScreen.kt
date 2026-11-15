@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
@@ -82,6 +83,7 @@ import com.seslikitap.container
 import com.seslikitap.core.BlockKind
 import com.seslikitap.player.Chapter
 import com.seslikitap.player.EngineStatus
+import com.seslikitap.player.formatDuration
 import kotlinx.coroutines.launch
 
 @Composable
@@ -169,6 +171,8 @@ fun ReaderScreen(bookId: Long, onBack: () -> Unit) {
                     player.addBookmark()
                     scope.launch { snackbar.showSnackbar("Yer imi eklendi") }
                 },
+                onReplay = { follow = true; player.replayParagraph() },
+                remaining = remember(st.sentenceIndex, st.chapterIndex, st.rate, st.lengthsReady) { player.remainingMs() },
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
@@ -354,16 +358,27 @@ private fun Controls(
     onSpeed: () -> Unit,
     onSleep: () -> Unit,
     onBookmark: () -> Unit,
+    onReplay: () -> Unit,
+    remaining: Pair<Long, Long?>,
 ) {
     Surface(tonalElevation = 3.dp, shadowElevation = 6.dp) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    if (sentenceCount > 0) "Bölüm ${chapterIndex + 1}/$chapterCount · Cümle ${sentence + 1}/$sentenceCount" else "",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        if (sentenceCount > 0) "Bölüm ${chapterIndex + 1}/$chapterCount · Cümle ${sentence + 1}/$sentenceCount" else "",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (sentenceCount > 0) {
+                        Text(
+                            "Bölüm: ${formatDuration(remaining.first)} kaldı" +
+                                (remaining.second?.let { " · Kitap: ${formatDuration(it)}" } ?: ""),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
                 AssistChip(onClick = onSpeed, label = { Text(formatRate(rate)) })
                 Spacer(Modifier.width(4.dp))
                 IconButton(onClick = onSleep) {
@@ -380,6 +395,7 @@ private fun Controls(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = onPrevChapter) { Icon(Icons.Default.SkipPrevious, "Önceki bölüm") }
+                IconButton(onClick = onReplay) { Icon(Icons.Default.Replay, "Kaçırdım: paragrafı tekrarla") }
                 IconButton(onClick = onPrevSentence) { Icon(Icons.Default.FastRewind, "Önceki cümle") }
                 FilledIconButton(
                     onClick = onPlayPause,

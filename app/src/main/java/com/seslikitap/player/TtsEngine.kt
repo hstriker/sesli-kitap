@@ -35,6 +35,8 @@ interface SpeechEngine {
     fun setPitch(pitch: Float)
     fun voices(): List<VoiceInfo>
     fun setVoice(name: String?)
+    /** Ses seviyesi 0..1 (uyku zamanlayıcısında yavaşça kısmak için). */
+    fun setVolume(volume: Float) {}
     /** Yüklü TTS uygulamaları: paket adı -> görünen ad. */
     fun engines(): List<Pair<String, String>> = emptyList()
     fun shutdown()
@@ -94,9 +96,14 @@ class AndroidTtsEngine(context: Context, enginePackage: String? = null) : Speech
         else TextToSpeech(context.applicationContext, onInit)
     }
 
+    @Volatile private var volume = 1f
+
+    override fun setVolume(volume: Float) { this.volume = volume }
+
     override fun speak(id: String, text: String, flush: Boolean) {
         val t = tts ?: return
         val params = Bundle()
+        if (volume < 1f) params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume)
         val r = t.speak(text, if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, params, id)
         if (r != TextToSpeech.SUCCESS) {
             Log.w(TAG, "speak başarısız: $r")

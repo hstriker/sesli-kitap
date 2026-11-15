@@ -58,6 +58,7 @@ fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onListen: () -> Unit) {
     val book by vm.book.collectAsStateWithLifecycle()
     val loadError by vm.loadError.collectAsStateWithLifecycle()
     val preview by vm.preview.collectAsStateWithLifecycle()
+    val totalMs by vm.totalMs.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -107,6 +108,7 @@ fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onListen: () -> Unit) {
                             if (e.chapterCount > 0) add("${e.chapterCount} bölüm")
                             add(formatSize(e.sizeBytes))
                             e.language?.let { add("Dil: $it") }
+                            totalMs?.let { add("≈ ${com.seslikitap.player.formatDuration(it)} dinleme") }
                         }.joinToString(" · ")
                         Text(info, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
