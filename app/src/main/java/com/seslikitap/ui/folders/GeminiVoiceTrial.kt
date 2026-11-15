@@ -57,6 +57,7 @@ fun GeminiVoiceTrialSection() {
     val prefs = container.prefs
     var voice by remember { mutableStateOf(prefs.geminiVoice) }
     var narrator by remember { mutableStateOf(prefs.geminiNarrator) }
+    var lite by remember { mutableStateOf(false) }
     var enabled by remember { mutableStateOf(container.player.usingGeminiVoice) }
     var menuOpen by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
@@ -122,6 +123,10 @@ fun GeminiVoiceTrialSection() {
             Text("Anlatıcı tonu (sakin, sıcak)")
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = lite, onCheckedChange = { lite = it })
+            Text("Flash-Lite ile dene (Flash'ın sınırı dolunca bu kullanılır)")
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Button(
                 enabled = !busy && text.isNotBlank(),
                 onClick = {
@@ -134,11 +139,10 @@ fun GeminiVoiceTrialSection() {
                     scope.launch {
                         try {
                             val out = File(context.cacheDir, "gemini-deneme.wav")
-                            val r = GeminiTts.synthesize(key, text.trim(), voice, narrator, out)
-                            prefs.addGeminiUsage(text.trim().length.toLong())
+                            val r = GeminiTts.synthesize(key, text.trim(), voice, narrator, out, prefs, onlyLite = lite)
                             val p = MediaPlayer()
                             p.setDataSource(r.file.absolutePath)
-                            p.setOnCompletionListener { status = "Bitti. (${text.trim().length} karakter, hazırlanma ${r.millis / 1000.0} sn, model: ${r.model})" }
+                            p.setOnCompletionListener { status = "Bitti. (${text.trim().length} karakter, hazırlanma ${r.millis / 1000.0} sn, model: ${GeminiTts.label(r.model)})" }
                             p.prepare()
                             p.start()
                             mp[0] = p

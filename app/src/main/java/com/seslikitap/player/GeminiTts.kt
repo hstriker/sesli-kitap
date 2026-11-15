@@ -34,7 +34,6 @@ object GeminiTts {
     private const val BASE = "https://generativelanguage.googleapis.com/v1beta"
     private const val FALLBACK_MODEL = "gemini-2.5-flash-preview-tts"
 
-    @Volatile private var cachedModel: String? = null
 
     class Result(val file: File, val model: String, val millis: Long)
 
@@ -48,10 +47,8 @@ object GeminiTts {
     fun recordQuota(prefs: Prefs, e: QuotaException): ZonedDateTime? {
         Kayit.log("Gemini kota: günlük=${e.daily}, sınır=${e.limit}, bekle=${e.retrySeconds} sn")
         return if (e.daily) {
-            val la = ZoneId.of("America/Los_Angeles")
-            val until = ZonedDateTime.now(la).toLocalDate().plusDays(1).atStartOfDay(la).plusMinutes(5)
+            val until = nextReset()
             prefs.geminiBlockedUntil = until.toInstant().toEpochMilli()
-            prefs.geminiDailyLimit = e.limit ?: prefs.geminiToday().second
             until
         } else {
             prefs.geminiBlockedUntil = System.currentTimeMillis() + (e.retrySeconds.coerceIn(10, 600) * 1000L)
@@ -62,22 +59,27 @@ object GeminiTts {
     /** Ayarlarda ve ses ayarlarında gösterilen "kalan sınır" satırı. */
     fun quotaSummary(prefs: Prefs): String {
         val (chars, reqs) = prefs.geminiToday()
-        val limit = prefs.geminiDailyLimit
-        // Bir parçanın ortalama süresi (dakika); 900 karakter ≈ 1 dk
-        val perReq = if (reqs > 0) chars / 900.0 / reqs else 5.5
-        val blocked = prefs.geminiBlockedUntil
         val now = System.currentTimeMillis()
+        // Bir parçanın ortalama süresi (dakika); 900 karakter ≈ 1 dk
+        val perReq = if (reqs > 0) chars / 900.0 / reqs else 6.0
+        val models = prefs.geminiModels.filter { prefs.geminiModelLimit(it) > 0 }
         return buildString {
-            if (blocked > now && blocked - now > 15 * 60_000L) {
-                val t = java.text.SimpleDateFormat("HH:mm", java.util.Locale("tr")).format(java.util.Date(blocked))
-                append("Bugünkü sınır doldu ($reqs parça, ~${(chars / 900)} dk). Saat $t'dan sonra yenilenir.")
-            } else if (limit > 0) {
-                val left = (limit - reqs).coerceAtLeast(0)
-                append("Bugün kalan: $left / $limit parça (~${(left * perReq).toInt()} dk Gemini sesi).")
+            if (models.isEmpty()) {
+                append("Bugün kullanılan: $reqs parça (~${chars / 900} dk). Kalan miktar ilk dinlemeden sonra görünür.")
             } else {
-                append("Bugün kullanılan: $reqs parça (~${chars / 900} dk). Günlük sınır ilk dolduğunda burada kalan miktar görünecek.")
+                val parts = models.map { m ->
+                    val limit = prefs.geminiModelLimit(m)
+                    val left = if (prefs.geminiModelBlockedUntil(m) > now) 0 else (limit - prefs.geminiModelReqs(m)).coerceAtLeast(0)
+                    Triple(m, left, limit)
+                }
+                val left = parts.sumOf { it.second }
+                val total = parts.sumOf { it.third }
+                if (left == 0) append("Bugünkü Gemini sınırı doldu (~${chars / 900} dk dinlendi); telefon sesi kullanılıyor.")
+                else append("Bugün kalan: $left / $total parça (~${(left * perReq).toInt()} dk Gemini sesi).")
+                append("\n")
+                append(parts.joinToString(" · ") { (m, l, t) -> "${label(m)}: $l/$t" })
             }
-            append(" Sınır her gün Türkiye saatiyle 10:00-11:00 arası yenilenir.")
+            append("\nSınır her gün Türkiye saatiyle 10:00-11:00 arası yenilenir.")
         }
     }
 
@@ -97,10 +99,44 @@ Speak ONLY the transcript below. Never read these notes or any heading aloud.
 $text
 """.trimIndent()
 
-    /** Metni seslendirip WAV dosyası olarak [out]'a yazar. */
-    suspend fun synthesize(apiKey: String, text: String, voice: String, narrator: Boolean, out: File): Result =
+    /**
+     * Metni seslendirip WAV dosyası olarak [out]'a yazar. Her ses modelinin ayrı günlük sınırı var:
+     * sırayla denenir (önce Flash, sonra Flash-Lite, sonra diğerleri); sınırı dolan model ertesi güne kadar atlanır.
+     * Hepsi dolduysa günlük [QuotaException] fırlatır. [onSwitch]: başka modele geçildi (eski, yeni).
+     */
+    suspend fun synthesize(
+        apiKey: String, text: String, voice: String, narrator: Boolean, out: File,
+        prefs: Prefs, onSwitch: ((String, String) -> Unit)? = null, onlyLite: Boolean = false,
+    ): Result = withContext(Dispatchers.IO) {
+        val all = models(apiKey, prefs)
+        val list = if (onlyLite) all.filter { it.contains("lite") }.ifEmpty { all } else all
+        var previous: String? = null
+        for (model in list) {
+            val now = System.currentTimeMillis()
+            if (prefs.geminiModelBlockedUntil(model) > now || prefs.geminiModelLimit(model) <= 0) continue
+            if (previous != null) onSwitch?.invoke(previous, model)
+            try {
+                val r = synthesizeWith(model, apiKey, text, voice, narrator, out)
+                prefs.addGeminiUsage(text.length.toLong(), model)
+                return@withContext r
+            } catch (e: QuotaException) {
+                if (!e.daily) throw e
+                Kayit.log("Gemini $model günlük sınırı doldu (sınır=${e.limit})")
+                prefs.setGeminiModelBlockedUntil(model, nextReset().toInstant().toEpochMilli())
+                e.limit?.let { prefs.setGeminiModelLimit(model, it) }
+                previous = model
+            } catch (e: ModelGoneException) {
+                cachedModels = null
+                previous = model
+            }
+        }
+        throw QuotaException(true, 0, null, "Gemini ses modellerinin bugünkü ücretsiz sınırı doldu. Yarın yenilenir.")
+    }
+
+    private class ModelGoneException : IOException("model yok")
+
+    private suspend fun synthesizeWith(model: String, apiKey: String, text: String, voice: String, narrator: Boolean, out: File): Result =
         withContext(Dispatchers.IO) {
-            val model = cachedModel ?: pickModel(apiKey).also { cachedModel = it }
             val prompt = if (narrator) narratorPrompt(text) else text
             val body = JSONObject()
                 .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
@@ -127,7 +163,7 @@ $text
                 if (code != 200) {
                     val err = conn.errorStream?.bufferedReader()?.readText().orEmpty()
                     Kayit.log("GeminiTts $model HTTP $code: ${err.take(400).replace('\n', ' ')}")
-                    if (code == 404) cachedModel = null
+                    if (code == 404) throw ModelGoneException()
                     if (code == 429) {
                         val daily = err.contains("PerDay", true) || err.contains("per day", true) || err.contains("RPD", false)
                         val limit = Regex("\"quotaValue\"\\s*:\\s*\"?(\\d+)").find(err)?.groupValues?.get(1)?.toIntOrNull()
@@ -160,32 +196,62 @@ $text
             }
         }
 
-    /** Anahtarın erişebildiği TTS modelleri arasından birini seçer (flash önce, en yeni ad önce). */
-    private fun pickModel(apiKey: String): String = try {
-        val conn = URL("$BASE/models?pageSize=1000").openConnection() as HttpURLConnection
-        try {
-            conn.connectTimeout = 15_000
-            conn.readTimeout = 30_000
-            conn.setRequestProperty("x-goog-api-key", apiKey)
-            if (conn.responseCode != 200) FALLBACK_MODEL else {
-                val arr = JSONObject(conn.inputStream.bufferedReader().readText()).optJSONArray("models") ?: JSONArray()
-                val names = (0 until arr.length()).map { arr.getJSONObject(it) }
-                    .filter { m ->
-                        val methods = m.optJSONArray("supportedGenerationMethods")
-                        m.optString("name").contains("tts", true) &&
-                            (methods == null || (0 until methods.length()).any { methods.getString(it) == "generateContent" })
-                    }
-                    .map { it.optString("name").removePrefix("models/") }
-                Kayit.log("GeminiTts modeller: $names")
-                names.sortedWith(compareBy<String> { !it.contains("flash") }.thenByDescending { it })
-                    .firstOrNull() ?: FALLBACK_MODEL
+    @Volatile private var cachedModels: List<String>? = null
+
+    /** Gemini günlük kotası Pasifik saatiyle gece yarısı yenilenir. */
+    fun nextReset(): ZonedDateTime {
+        val la = ZoneId.of("America/Los_Angeles")
+        return ZonedDateTime.now(la).toLocalDate().plusDays(1).atStartOfDay(la).plusMinutes(5)
+    }
+
+    /** Model adından kısa ad: "gemini-3.8-flash-lite-tts" → "3.8 Flash-Lite". */
+    fun label(model: String): String = model.removePrefix("gemini-").replace("-preview", "").replace("-tts", "")
+        .split('-').joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }.replace("Flash Lite", "Flash-Lite")
+
+    /**
+     * Anahtarın erişebildiği TTS modelleri, tercih sırasıyla: Flash (en yeni önce), Flash-Lite, diğerleri.
+     */
+    private fun models(apiKey: String, prefs: Prefs): List<String> {
+        cachedModels?.let { return it }
+        val list = try {
+            val conn = URL("$BASE/models?pageSize=1000").openConnection() as HttpURLConnection
+            try {
+                conn.connectTimeout = 15_000
+                conn.readTimeout = 30_000
+                conn.setRequestProperty("x-goog-api-key", apiKey)
+                if (conn.responseCode != 200) null else {
+                    val arr = JSONObject(conn.inputStream.bufferedReader().readText()).optJSONArray("models") ?: JSONArray()
+                    (0 until arr.length()).map { arr.getJSONObject(it) }
+                        .filter { m ->
+                            val methods = m.optJSONArray("supportedGenerationMethods")
+                            m.optString("name").contains("tts", true) &&
+                                (methods == null || (0 until methods.length()).any { methods.getString(it) == "generateContent" })
+                        }
+                        .map { it.optString("name").removePrefix("models/") }
+                        .sortedWith(
+                            compareBy<String> {
+                                when {
+                                    it.contains("flash") && !it.contains("lite") -> 0
+                                    it.contains("lite") -> 1
+                                    else -> 2
+                                }
+                            }.thenByDescending { it }
+                        )
+                }
+            } finally {
+                conn.disconnect()
             }
-        } finally {
-            conn.disconnect()
+        } catch (e: Exception) {
+            Kayit.log("GeminiTts model listesi alınamadı: ${e.message}")
+            null
         }
-    } catch (e: Exception) {
-        Kayit.log("GeminiTts model listesi alınamadı: ${e.message}")
-        FALLBACK_MODEL
+        val result = list?.takeIf { it.isNotEmpty() } ?: prefs.geminiModels.takeIf { it.isNotEmpty() } ?: listOf(FALLBACK_MODEL)
+        if (list != null) {
+            Kayit.log("GeminiTts modeller: $list")
+            prefs.geminiModels = result
+            cachedModels = result
+        }
+        return result
     }
 
     private fun writeWav(out: File, pcm: ByteArray, rate: Int) {

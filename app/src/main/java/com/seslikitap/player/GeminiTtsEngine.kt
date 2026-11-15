@@ -169,19 +169,18 @@ class GeminiTtsEngine(
             // kısa bekletmede bir kez bekleyip yeniden denenir.
             requestLock.withLock {
                 try {
-                    GeminiTts.synthesize(key, text, voice, narrator, tmp)
+                    GeminiTts.synthesize(key, text, voice, narrator, tmp, prefs, ::onSwitch)
                 } catch (e: GeminiTts.QuotaException) {
                     if (e.daily || e.retrySeconds > 90) throw e
                     Kayit.log("Gemini dakikalık sınır; ${e.retrySeconds} sn bekleniyor")
                     delay((e.retrySeconds + 2) * 1000L)
-                    GeminiTts.synthesize(key, text, voice, narrator, tmp)
+                    GeminiTts.synthesize(key, text, voice, narrator, tmp, prefs, ::onSwitch)
                 }
             }
             tmp.renameTo(out)
             // Tanı: ses beklenenden çok kısaysa Gemini metnin sonunu kesmiş olabilir
             val secs = (out.length() - 44) / 48_000.0
             Kayit.log("Gemini parça: ${text.length} karakter, ${secs.toInt()} sn (${"%.1f".format(text.length / secs.coerceAtLeast(1.0))} karakter/sn)")
-            prefs.addGeminiUsage(text.length.toLong())
             trimCache()
             out
         } catch (e: GeminiTts.QuotaException) {
@@ -198,6 +197,10 @@ class GeminiTtsEngine(
             notice.value = "Gemini sesi alınamadı (${e.message}); telefon sesiyle devam ediliyor."
             null
         }
+    }
+
+    private fun onSwitch(from: String, to: String) {
+        notice.value = "Gemini ${GeminiTts.label(from)} sesinin bugünkü sınırı doldu; ${GeminiTts.label(to)} ile devam ediliyor."
     }
 
     private fun trimCache() {

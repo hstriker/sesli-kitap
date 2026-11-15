@@ -144,11 +144,6 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("gemini_narrator", true)
         set(v) = sp.edit().putBoolean("gemini_narrator", v).apply()
 
-    /** Gemini'nin günlük istek sınırı (ücretsiz katman: 10; Google'ın hata yanıtından güncellenir). */
-    var geminiDailyLimit: Int
-        get() = sp.getInt("gemini_daily_limit", 10)
-        set(v) = sp.edit().putInt("gemini_daily_limit", v).apply()
-
     /** Bu zamana kadar (epoch ms) Gemini'ye istek gönderilmez; kota dolunca ayarlanır. */
     var geminiBlockedUntil: Long
         get() = sp.getLong("gemini_blocked_until", 0L)
@@ -160,11 +155,31 @@ class Prefs(context: Context) {
         return if (sp.getString("gemini_day", null) == day) sp.getLong("gemini_chars", 0L) to sp.getInt("gemini_reqs", 0) else 0L to 0
     }
 
-    fun addGeminiUsage(chars: Long) {
-        val day = java.time.LocalDate.now(java.time.ZoneId.of("America/Los_Angeles")).toString()
+    private fun geminiDay() = java.time.LocalDate.now(java.time.ZoneId.of("America/Los_Angeles")).toString()
+
+    fun addGeminiUsage(chars: Long, model: String? = null) {
+        val day = geminiDay()
         val (c, r) = geminiToday()
-        sp.edit().putString("gemini_day", day).putLong("gemini_chars", c + chars).putInt("gemini_reqs", r + 1).apply()
+        val e = sp.edit().putString("gemini_day", day).putLong("gemini_chars", c + chars).putInt("gemini_reqs", r + 1)
+        if (model != null) e.putInt("gemini_mreqs_${day}_$model", geminiModelReqs(model) + 1)
+        e.apply()
     }
+
+    /** Bu modelle bugün yapılan istek sayısı. */
+    fun geminiModelReqs(model: String): Int = sp.getInt("gemini_mreqs_${geminiDay()}_$model", 0)
+
+    /** Modelin günlük sınırı doldu: bu zamana kadar (epoch ms) o modele istek gönderilmez. */
+    fun geminiModelBlockedUntil(model: String): Long = sp.getLong("gemini_mblock_$model", 0L)
+    fun setGeminiModelBlockedUntil(model: String, until: Long) = sp.edit().putLong("gemini_mblock_$model", until).apply()
+
+    /** Modelin günlük istek sınırı (ücretsiz katman: 10; Google'ın hata yanıtından güncellenir). */
+    fun geminiModelLimit(model: String): Int = sp.getInt("gemini_mlimit_$model", 10)
+    fun setGeminiModelLimit(model: String, v: Int) = sp.edit().putInt("gemini_mlimit_$model", v).apply()
+
+    /** Kullanılabilir Gemini ses modelleri (tercih sırasıyla). */
+    var geminiModels: List<String>
+        get() = sp.getString("gemini_models", null)?.split(',')?.filter { it.isNotBlank() } ?: emptyList()
+        set(v) = sp.edit().putString("gemini_models", v.joinToString(",")).apply()
 
     /** Kitapta kalınan cümlenin başı (cihazlar arası tam yer eşitleme için). */
     fun positionExcerpt(bookId: Long): String? = sp.getString("pos_excerpt_$bookId", null)
