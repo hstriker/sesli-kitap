@@ -1,6 +1,6 @@
 # Durum (devir notu)
 
-Son güncelleme: 15 Kasım 2026, ilk geliştirme oturumunun sonu. Son başarılı derleme: `e0688de` (Release "Son sürüm").
+Son güncelleme: 16 Kasım 2026, kurulum oturumu. Son başarılı derleme: `e0688de` (Release "Son sürüm").
 
 ## Emre'nin denediği / geri bildirimleri
 
@@ -18,15 +18,17 @@ Veritabanı göçleri (1→2→3) gerçek veriyle denenmedi. İlk açılışta a
 
 ## Emre'nin yapacakları (sırayla) — ayrıntı: `docs/KURULUM-ADIMLARI.md`
 
-1. [ ] Yeni APK'yı kur, uygulamanın açıldığını ve kitaplığın durduğunu doğrula (göç sorunsuz mu?)
-2. [ ] **A) Doğal ses**: faturalandırma (kart), Cloud Text-to-Speech API'yi aç, `cloud-platform` iznini ekle, 1 $ bütçe uyarısı → telefonda Ayarlar → Doğal ses → Google'a bağlan
-3. [ ] **B) Yedekleme**: `drive.appdata` iznini ekle → telefonda otomatik yedeği aç, "Şimdi yedekle"
-4. [ ] **C) Gemini**: aistudio.google.com/apikey → anahtar → Ayarlar → Yapay zekâ özeti
-5. [ ] **D) Android Auto**: geliştirici ayarları → Bilinmeyen kaynaklar
-6. [ ] **E) Web**: Firebase'i projeye ekle, Hosting'i aç, hizmet hesabı JSON → GitHub secret `FIREBASE_SERVICE_ACCOUNT`, Web OAuth istemcisi (origin `https://sesli-kitap-514818.web.app`) → **Client ID'yi Claude'a ver** → Claude `web/config.js`'e yazar
+1. [x] Yeni APK'yı kur, uygulamanın açıldığını ve kitaplığın durduğunu doğrula (göç sorunsuz mu?)
+2. [ ] **ATLANDI — A) Doğal ses**: Türkiye'de kart eklerken Google 1.500 TL tek seferlik ön ödeme istiyor; Emre ödemeyi REDDETTİ ("ücretsiz demiştin"). Ücretsiz alternatif bul (ör. telefona daha iyi TTS motoru). Eski plan:: faturalandırma (kart), Cloud Text-to-Speech API'yi aç, `cloud-platform` iznini ekle, 1 $ bütçe uyarısı → telefonda Ayarlar → Doğal ses → Google'a bağlan
+3. [x] **B) Yedekleme** (izin eklendi, telefonda "Yedeklendi ✓"): `drive.appdata` iznini ekle → telefonda otomatik yedeği aç, "Şimdi yedekle"
+4. [x] **C) Gemini** (Default Gemini Project'te anahtar, telefona girildi; özellik henüz denenmedi): aistudio.google.com/apikey → anahtar → Ayarlar → Yapay zekâ özeti
+5. [x] **D) Android Auto** (Bilinmeyen kaynaklar açıldı; arabada denenmedi): geliştirici ayarları → Bilinmeyen kaynaklar
+6. [x] **E) Web** (Firebase + Hosting açık, secret eklendi, Web istemcisi "Web client 1", Client ID `web/config.js`'te): Firebase'i projeye ekle, Hosting'i aç, hizmet hesabı JSON → GitHub secret `FIREBASE_SERVICE_ACCOUNT`, Web OAuth istemcisi (origin `https://sesli-kitap-514818.web.app`) → **Client ID'yi Claude'a ver** → Claude `web/config.js`'e yazar
 7. [ ] Toplu deneme; sorunlar için Ayarlar → Tanı kaydı → Kopyala
 
 ## Kararlar
+
+- **Ücretli/kart isteyen hiçbir adım önerme**; önce ücret/ön ödeme riskini açıkça söyle (doğal ses olayı).
 
 - Ses: önce Android TTS, sonra Google **WaveNet** (ücretsiz kota 4 M karakter/ay; uygulama 3,8 M'de durup telefon sesine geçer). Chirp 3 HD / Gemini TTS seçilmedi (pahalı/doğrulanmadı). Emre "sınırı geçmeyiz, sorun değil" dedi.
 - MP3 kaydı yalnızca doğal sesle (MP3 parçaları birleştirilir).
