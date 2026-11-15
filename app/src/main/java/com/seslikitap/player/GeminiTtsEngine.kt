@@ -24,7 +24,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.security.MessageDigest
 import java.time.ZoneId
-import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 
@@ -169,14 +168,11 @@ class GeminiTtsEngine(
             trimCache()
             out
         } catch (e: GeminiTts.QuotaException) {
-            Kayit.log("Gemini kota: günlük=${e.daily}, bekle=${e.retrySeconds} sn")
-            if (e.daily) {
-                val until = nextReset()
-                prefs.geminiBlockedUntil = until.toInstant().toEpochMilli()
+            val until = GeminiTts.recordQuota(prefs, e)
+            if (until != null) {
                 val local = until.withZoneSameInstant(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"))
                 notice.value = "Gemini'nin bugünkü ücretsiz sınırı doldu; telefon sesine geçildi. Saat $local'dan sonra Gemini sesi kendiliğinden geri gelir."
             } else {
-                prefs.geminiBlockedUntil = System.currentTimeMillis() + (e.retrySeconds.coerceIn(10, 600) * 1000L)
                 notice.value = "Gemini kısa bir süre bekletiyor; bu arada telefon sesiyle okunuyor."
             }
             null
@@ -185,12 +181,6 @@ class GeminiTtsEngine(
             notice.value = "Gemini sesi alınamadı (${e.message}); telefon sesiyle devam ediliyor."
             null
         }
-    }
-
-    /** Gemini günlük kotası Pasifik saatiyle gece yarısı yenilenir. */
-    private fun nextReset(): ZonedDateTime {
-        val la = ZoneId.of("America/Los_Angeles")
-        return ZonedDateTime.now(la).toLocalDate().plusDays(1).atStartOfDay(la).plusMinutes(5)
     }
 
     private fun trimCache() {

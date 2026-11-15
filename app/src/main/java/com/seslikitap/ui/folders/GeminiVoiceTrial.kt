@@ -85,20 +85,8 @@ fun GeminiVoiceTrialSection() {
             Text("Kitapları Gemini sesiyle oku", modifier = Modifier.weight(1f))
             Switch(checked = enabled, onCheckedChange = { enabled = it; container.player.setGeminiVoice(it) })
         }
-        val (todayChars, todayReqs) = remember(status, enabled) { prefs.geminiToday() }
-        val blockedUntil = remember(status, enabled) { prefs.geminiBlockedUntil }
-        Text(
-            buildString {
-                append("Bugün: ${todayReqs} istek, ~${todayChars / 900} dk ses")
-                if (blockedUntil > System.currentTimeMillis()) {
-                    append(" · Sınır doldu, ")
-                    append(java.text.SimpleDateFormat("HH:mm", java.util.Locale("tr")).format(java.util.Date(blockedUntil)))
-                    append("'dan sonra yenilenir")
-                }
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        val summary = remember(status, enabled) { GeminiTts.quotaSummary(prefs) }
+        Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         Text("Dene", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
         OutlinedTextField(
             value = text,
@@ -155,6 +143,9 @@ fun GeminiVoiceTrialSection() {
                             p.start()
                             mp[0] = p
                             status = "Çalıyor… (hazırlanma ${r.millis / 1000.0} sn)"
+                        } catch (e: GeminiTts.QuotaException) {
+                            GeminiTts.recordQuota(prefs, e)
+                            status = e.message ?: "Sınır doldu"
                         } catch (e: Exception) {
                             status = e.message ?: "Hata"
                         } finally {

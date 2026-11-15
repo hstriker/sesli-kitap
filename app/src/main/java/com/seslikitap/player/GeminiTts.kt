@@ -2,6 +2,9 @@ package com.seslikitap.player
 
 import android.util.Base64
 import com.seslikitap.Kayit
+import com.seslikitap.Prefs
+import java.time.ZoneId
+import java.time.ZonedDateTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -36,7 +39,47 @@ object GeminiTts {
     class Result(val file: File, val model: String, val millis: Long)
 
     /** Ücretsiz kota doldu. [daily]: günlük sınır (gece yarısı Pasifik saatinde yenilenir); değilse [retrySeconds] sonra. */
-    class QuotaException(val daily: Boolean, val retrySeconds: Int, message: String) : IOException(message)
+    class QuotaException(val daily: Boolean, val retrySeconds: Int, val limit: Int?, message: String) : IOException(message)
+
+    /**
+     * Kota hatasını kaydeder: Gemini'ye ne zamana kadar istek gönderilmeyeceği ve günlük sınır.
+     * Günlük sınırsa yenilenme zamanını döndürür.
+     */
+    fun recordQuota(prefs: Prefs, e: QuotaException): ZonedDateTime? {
+        Kayit.log("Gemini kota: günlük=${e.daily}, sınır=${e.limit}, bekle=${e.retrySeconds} sn")
+        return if (e.daily) {
+            val la = ZoneId.of("America/Los_Angeles")
+            val until = ZonedDateTime.now(la).toLocalDate().plusDays(1).atStartOfDay(la).plusMinutes(5)
+            prefs.geminiBlockedUntil = until.toInstant().toEpochMilli()
+            prefs.geminiDailyLimit = e.limit ?: prefs.geminiToday().second
+            until
+        } else {
+            prefs.geminiBlockedUntil = System.currentTimeMillis() + (e.retrySeconds.coerceIn(10, 600) * 1000L)
+            null
+        }
+    }
+
+    /** Ayarlarda ve ses ayarlarında gösterilen "kalan sınır" satırı. */
+    fun quotaSummary(prefs: Prefs): String {
+        val (chars, reqs) = prefs.geminiToday()
+        val limit = prefs.geminiDailyLimit
+        // Bir parçanın ortalama süresi (dakika); 900 karakter ≈ 1 dk
+        val perReq = if (reqs > 0) chars / 900.0 / reqs else 2.5
+        val blocked = prefs.geminiBlockedUntil
+        val now = System.currentTimeMillis()
+        return buildString {
+            if (blocked > now && blocked - now > 15 * 60_000L) {
+                val t = java.text.SimpleDateFormat("HH:mm", java.util.Locale("tr")).format(java.util.Date(blocked))
+                append("Bugünkü sınır doldu ($reqs parça, ~${(chars / 900)} dk). Saat $t'dan sonra yenilenir.")
+            } else if (limit > 0) {
+                val left = (limit - reqs).coerceAtLeast(0)
+                append("Bugün kalan: $left / $limit parça (~${(left * perReq).toInt()} dk Gemini sesi).")
+            } else {
+                append("Bugün kullanılan: $reqs parça (~${chars / 900} dk). Günlük sınır ilk dolduğunda burada kalan miktar görünecek.")
+            }
+            append(" Sınır her gün Türkiye saatiyle 10:00-11:00 arası yenilenir.")
+        }
+    }
 
     /** Anlatıcı tonu sürümü: talimat metni değişince önbellek anahtarı da değişsin. */
     const val PROMPT_VERSION = "anlatici2"
@@ -87,8 +130,9 @@ $text
                     if (code == 404) cachedModel = null
                     if (code == 429) {
                         val daily = err.contains("PerDay", true) || err.contains("per day", true) || err.contains("RPD", false)
+                        val limit = Regex("\"quotaValue\"\\s*:\\s*\"?(\\d+)").find(err)?.groupValues?.get(1)?.toIntOrNull()
                         val retry = Regex("\"retryDelay\"\\s*:\\s*\"(\\d+)").find(err)?.groupValues?.get(1)?.toIntOrNull() ?: 60
-                        throw QuotaException(daily, retry, "Gemini ses sınırına ulaşıldı (ücretsiz kota). " +
+                        throw QuotaException(daily, retry, limit, "Gemini ses sınırına ulaşıldı (ücretsiz kota). " +
                             if (daily) "Günlük sınır yarın yenilenir." else "Birkaç dakika sonra tekrar deneyin.")
                     }
                     throw IOException(

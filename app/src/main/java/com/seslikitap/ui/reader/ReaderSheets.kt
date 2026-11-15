@@ -196,6 +196,13 @@ fun SettingsSheet(fontSize: Float, onFontSize: (Float) -> Unit, onDismiss: () ->
                 engines = player.engines()
                 selectedVoice = if (it) prefs.geminiVoice else prefs.voiceName
             }
+            if (gemini) {
+                Text(
+                    com.seslikitap.player.GeminiTts.quotaSummary(prefs),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             SwitchRow("Doğal ses (Google WaveNet)", cloud) {
                 cloud = it
                 if (it) gemini = false
