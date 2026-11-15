@@ -107,6 +107,12 @@ interface BookDao {
 
     @Query("UPDATE books SET lastOpenedAt = :time WHERE id = :id")
     suspend fun markOpened(id: Long, time: Long)
+
+    @Query("UPDATE books SET progress = :progress WHERE id = :id")
+    suspend fun setProgress(id: Long, progress: Float)
+
+    @Query("UPDATE books SET finished = :finished WHERE id = :id")
+    suspend fun setFinished(id: Long, finished: Boolean)
 }
 
 @Dao

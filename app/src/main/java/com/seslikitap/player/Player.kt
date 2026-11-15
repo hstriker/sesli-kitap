@@ -1,0 +1,557 @@
+package com.seslikitap.player
+
+import android.content.Context
+import android.content.Intent
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.net.Uri
+import android.util.Log
+import androidx.core.content.ContextCompat
+import com.seslikitap.Prefs
+import com.seslikitap.core.BlockKind
+import com.seslikitap.core.EpubParser
+import com.seslikitap.core.ExtractOptions
+import com.seslikitap.core.TurkishNormalizer
+import com.seslikitap.data.AppDatabase
+import com.seslikitap.data.BookStatus
+import com.seslikitap.data.BookmarkEntity
+import com.seslikitap.data.EpubOpener
+import com.seslikitap.data.PositionEntity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+data class PlayerState(
+    val bookId: Long? = null,
+    val bookTitle: String = "",
+    val author: String = "",
+    val coverPath: String? = null,
+    val chapterIndex: Int = 0,
+    val chapterCount: Int = 0,
+    val chapterTitle: String = "",
+    val sentenceIndex: Int = 0,
+    val sentenceCount: Int = 0,
+    val playing: Boolean = false,
+    val loading: Boolean = false,
+    val rate: Float = 1f,
+    val pitch: Float = 1f,
+    /** Uyku zamanlayıcısı bitiş zamanı (epoch ms). */
+    val sleepAt: Long? = null,
+    val sleepAtChapterEnd: Boolean = false,
+    val error: String? = null,
+    val engine: EngineStatus = EngineStatus.Initializing,
+    val finished: Boolean = false,
+) {
+    val active get() = bookId != null
+}
+
+/**
+ * Uygulama genelinde tek oynatıcı. Ekran ve arka plan servisi aynı örneği kullanır.
+ * Tüm durum değişiklikleri ana iş parçacığında yapılır.
+ */
+class Player(
+    private val context: Context,
+    private val db: AppDatabase,
+    private val prefs: Prefs,
+) : SpeechListener {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val _state = MutableStateFlow(PlayerState(rate = prefs.speechRate, pitch = prefs.speechPitch))
+    val state: StateFlow<PlayerState> = _state.asStateFlow()
+
+    private val _chapter = MutableStateFlow<Chapter?>(null)
+    /** Ekranda gösterilen bölüm. */
+    val chapter: StateFlow<Chapter?> = _chapter.asStateFlow()
+
+    private var content: BookContent? = null
+    private var engine: SpeechEngine? = null
+    private var engineWatch: Job? = null
+
+    /** Her yeni sıralamada artar; eski motor olaylarını yok saymak için. */
+    private var generation = 0
+    private var queuedUntil = -1
+    private var consecutiveErrors = 0
+    private var sleepJob: Job? = null
+    private var openJob: Job? = null
+
+    val bookContent: BookContent? get() = content
+
+    // ------------------------------------------------------------------ Motor
+
+    private fun engine(): SpeechEngine {
+        engine?.let { return it }
+        val e = AndroidTtsEngine(context, prefs.ttsEngine)
+        e.listener = this
+        engine = e
+        engineWatch = scope.launch {
+            e.status.collect { s ->
+                _state.update { it.copy(engine = s) }
+                if (s == EngineStatus.Ready) {
+                    e.setRate(_state.value.rate)
+                    e.setPitch(_state.value.pitch)
+                    prefs.voiceName?.let { e.setVoice(it) }
+                }
+            }
+        }
+        return e
+    }
+
+    fun voices(): List<VoiceInfo> = engine().voices()
+
+    fun setVoice(name: String?) {
+        prefs.voiceName = name
+        engine().setVoice(name)
+        restartIfPlaying()
+    }
+
+    /** Ses motoru değişti (ör. başka bir TTS uygulaması seçildi). */
+    fun resetEngine() {
+        pause()
+        engineWatch?.cancel()
+        engine?.shutdown()
+        engine = null
+        engine()
+    }
+
+    // ------------------------------------------------------------------ Kitap açma
+
+    /**
+     * Kitabı açar. Zaten açıksa bir şey yapmaz. [chapter]/[anchor] verilirse oradan başlar,
+     * yoksa kalınan yerden devam eder.
+     */
+    fun open(bookId: Long, chapter: Int? = null, anchor: String? = null, autoPlay: Boolean = false) {
+        if (_state.value.bookId == bookId && content != null && chapter == null) {
+            if (autoPlay && !_state.value.playing) play()
+            return
+        }
+        openJob?.cancel()
+        openJob = scope.launch {
+            pause()
+            engine()
+            _state.update { it.copy(loading = true, error = null, bookId = bookId) }
+            try {
+                val entity = withContext(Dispatchers.IO) { db.books().get(bookId) }
+                    ?: throw IllegalStateException("Kitap bulunamadı")
+                if (entity.status == BookStatus.DRM) throw IllegalStateException("Bu kitap DRM ile korunuyor, seslendirilemez")
+                val newContent = withContext(Dispatchers.IO) {
+                    val zip = EpubOpener.open(context, Uri.parse(entity.uri))
+                    try {
+                        val epub = EpubParser.parse(zip, entity.fileName, includeToc = true)
+                        BookContent(bookId, epub, zip, ExtractOptions(prefs.skipFootnotes, prefs.skipPageNumbers))
+                    } catch (e: Throwable) {
+                        zip.close(); throw e
+                    }
+                }
+                content?.close()
+                content = newContent
+                db.books().markOpened(bookId, System.currentTimeMillis())
+
+                val saved = withContext(Dispatchers.IO) { db.positions().get(bookId) }
+                val (ch, sentence) = withContext(Dispatchers.IO) {
+                    if (chapter != null) {
+                        val c = newContent.chapter(chapter.coerceIn(0, newContent.chapterCount - 1))
+                        c.index to c.sentenceForAnchor(anchor)
+                    } else if (saved != null && saved.chapterIndex in 0 until newContent.chapterCount) {
+                        val c = newContent.chapter(saved.chapterIndex)
+                        c.index to c.sentenceIndexOf(saved.blockIndex, saved.sentenceIndex)
+                    } else 0 to 0
+                }
+                val startChapter = withContext(Dispatchers.IO) { newContent.nextNonEmpty(ch) }
+                    ?: throw IllegalStateException("Kitapta seslendirilecek metin bulunamadı")
+                _state.update {
+                    it.copy(
+                        bookTitle = entity.title, author = entity.author, coverPath = entity.coverPath,
+                        chapterCount = newContent.chapterCount, loading = false, finished = false,
+                    )
+                }
+                showChapter(startChapter, if (startChapter == ch) sentence else 0)
+                if (autoPlay) play()
+            } catch (e: Throwable) {
+                Log.e(TAG, "Kitap açılamadı", e)
+                _state.update { it.copy(loading = false, error = e.message ?: "Kitap açılamadı") }
+            }
+        }
+    }
+
+    private suspend fun showChapter(index: Int, sentence: Int) {
+        val c = content ?: return
+        val ch = withContext(Dispatchers.IO) { c.chapter(index) }
+        _chapter.value = ch
+        val s = sentence.coerceIn(0, (ch.sentences.size - 1).coerceAtLeast(0))
+        _state.update {
+            it.copy(
+                chapterIndex = index, chapterTitle = ch.title,
+                sentenceIndex = s, sentenceCount = ch.sentences.size,
+            )
+        }
+        // Sonraki bölümü önceden hazırla
+        scope.launch(Dispatchers.IO) { if (index + 1 < c.chapterCount) runCatching { c.chapter(index + 1) } }
+    }
+
+    // ------------------------------------------------------------------ Oynatma
+
+    fun play() {
+        val st = _state.value
+        if (content == null || st.loading) return
+        if (!requestFocus()) return
+        val e = engine()
+        _state.update { it.copy(playing = true, error = null, finished = false) }
+        PlaybackService.start(context)
+        if (e.status.value != EngineStatus.Ready) {
+            scope.launch {
+                val s = e.status.first { it != EngineStatus.Initializing }
+                if (s == EngineStatus.Ready && _state.value.playing) speakFromCurrent()
+                else if (s != EngineStatus.Ready) _state.update { it.copy(playing = false) }
+            }
+            return
+        }
+        speakFromCurrent()
+    }
+
+    fun pause() {
+        if (!_state.value.playing) return
+        generation++
+        engine?.stop()
+        _state.update { it.copy(playing = false) }
+        savePosition()
+    }
+
+    fun toggle() = if (_state.value.playing) pause() else play()
+
+    /** Kitabı kapatır, bildirimi kaldırır. */
+    fun stop() {
+        pause()
+        abandonFocus()
+        cancelSleepTimer()
+        content?.close()
+        content = null
+        _chapter.value = null
+        _state.update { PlayerState(rate = it.rate, pitch = it.pitch, engine = it.engine) }
+    }
+
+    private fun speakFromCurrent() {
+        generation++
+        queuedUntil = _state.value.sentenceIndex - 1
+        consecutiveErrors = 0
+        fillQueue(flush = true)
+    }
+
+    private fun restartIfPlaying() {
+        if (_state.value.playing) {
+            engine?.stop()
+            speakFromCurrent()
+        }
+    }
+
+    private fun fillQueue(flush: Boolean) {
+        val ch = _chapter.value ?: return
+        val e = engine ?: return
+        var first = flush
+        while (queuedUntil < ch.sentences.size - 1 && queuedUntil - _state.value.sentenceIndex < LOOKAHEAD - 1) {
+            queuedUntil++
+            e.speak(utteranceId(ch.index, queuedUntil), spokenText(ch, queuedUntil), first)
+            first = false
+        }
+    }
+
+    private fun spokenText(ch: Chapter, i: Int): String {
+        var t = ch.text(i)
+        if (prefs.normalizeText) t = TurkishNormalizer.normalize(t)
+        val block = ch.blocks[ch.sentences[i].blockIndex]
+        if (block.kind == BlockKind.HEADING && t.isNotEmpty() && t.last().isLetterOrDigit()) t += "."
+        return t
+    }
+
+    private fun utteranceId(chapter: Int, sentence: Int) = "$generation:$chapter:$sentence"
+
+    private fun parseId(id: String): Triple<Int, Int, Int>? {
+        val p = id.split(':')
+        if (p.size != 3) return null
+        return Triple(p[0].toIntOrNull() ?: return null, p[1].toIntOrNull() ?: return null, p[2].toIntOrNull() ?: return null)
+    }
+
+    override fun onStart(id: String) {
+        scope.launch {
+            val (gen, ch, s) = parseId(id) ?: return@launch
+            if (gen != generation || ch != _state.value.chapterIndex) return@launch
+            consecutiveErrors = 0
+            _state.update { it.copy(sentenceIndex = s) }
+            savePosition()
+        }
+    }
+
+    override fun onDone(id: String) {
+        scope.launch {
+            val (gen, chIdx, s) = parseId(id) ?: return@launch
+            if (gen != generation || !_state.value.playing) return@launch
+            val ch = _chapter.value ?: return@launch
+            if (chIdx != ch.index) return@launch
+            if (s >= ch.sentences.size - 1) {
+                onChapterFinished()
+            } else {
+                if (_state.value.sentenceIndex < s + 1) _state.update { it.copy(sentenceIndex = s + 1) }
+                fillQueue(flush = false)
+            }
+        }
+    }
+
+    override fun onError(id: String, code: Int) {
+        Log.w(TAG, "TTS hatası $code, $id")
+        scope.launch {
+            val (gen, _, _) = parseId(id) ?: return@launch
+            if (gen != generation) return@launch
+            consecutiveErrors++
+            if (consecutiveErrors > 5) {
+                pause()
+                _state.update { it.copy(error = "Seslendirme motoru hata veriyor (kod $code). Ayarlardan başka bir ses deneyin.") }
+                return@launch
+            }
+            onDone(id)
+        }
+    }
+
+    private suspend fun onChapterFinished() {
+        val c = content ?: return
+        if (_state.value.sleepAtChapterEnd) {
+            cancelSleepTimer()
+            val next = withContext(Dispatchers.IO) { c.nextNonEmpty(_state.value.chapterIndex + 1) }
+            pause()
+            if (next != null) showChapter(next, 0)
+            savePosition()
+            return
+        }
+        val next = withContext(Dispatchers.IO) { c.nextNonEmpty(_state.value.chapterIndex + 1) }
+        if (next == null) {
+            pause()
+            _state.update { it.copy(finished = true) }
+            _state.value.bookId?.let { id -> scope.launch(Dispatchers.IO) { markFinished(id) } }
+            return
+        }
+        showChapter(next, 0)
+        speakFromCurrent()
+    }
+
+    // ------------------------------------------------------------------ Gezinme
+
+    fun seek(chapter: Int, sentence: Int) {
+        val c = content ?: return
+        scope.launch {
+            val wasPlaying = _state.value.playing
+            if (wasPlaying) { generation++; engine?.stop() }
+            val target = withContext(Dispatchers.IO) {
+                c.nextNonEmpty(chapter.coerceIn(0, c.chapterCount - 1)) ?: c.nextNonEmpty(chapter, -1)
+            } ?: return@launch
+            if (target != _state.value.chapterIndex || _chapter.value == null) showChapter(target, if (target == chapter) sentence else 0)
+            else _state.update { it.copy(sentenceIndex = sentence.coerceIn(0, it.sentenceCount - 1)) }
+            savePosition()
+            if (wasPlaying) speakFromCurrent()
+        }
+    }
+
+    fun seekToAnchor(chapter: Int, anchor: String?) {
+        val c = content ?: return
+        scope.launch {
+            val ch = withContext(Dispatchers.IO) { c.chapter(chapter.coerceIn(0, c.chapterCount - 1)) }
+            seek(ch.index, ch.sentenceForAnchor(anchor))
+        }
+    }
+
+    fun nextSentence() {
+        val st = _state.value
+        if (st.sentenceIndex + 1 < st.sentenceCount) seek(st.chapterIndex, st.sentenceIndex + 1)
+        else nextChapter()
+    }
+
+    fun previousSentence() {
+        val st = _state.value
+        if (st.sentenceIndex > 0) seek(st.chapterIndex, st.sentenceIndex - 1)
+        else if (st.chapterIndex > 0) {
+            val c = content ?: return
+            scope.launch {
+                val prev = withContext(Dispatchers.IO) { c.nextNonEmpty(st.chapterIndex - 1, -1) } ?: return@launch
+                val count = withContext(Dispatchers.IO) { c.chapter(prev).sentences.size }
+                seek(prev, count - 1)
+            }
+        }
+    }
+
+    fun nextChapter() {
+        val c = content ?: return
+        val st = _state.value
+        scope.launch {
+            val n = withContext(Dispatchers.IO) { c.nextNonEmpty(st.chapterIndex + 1) } ?: return@launch
+            seek(n, 0)
+        }
+    }
+
+    fun previousChapter() {
+        val c = content ?: return
+        val st = _state.value
+        scope.launch {
+            // Bölümün başındaysak bir önceki bölüme, değilsek bu bölümün başına git.
+            val target = if (st.sentenceIndex > 2) st.chapterIndex
+            else withContext(Dispatchers.IO) { c.nextNonEmpty(st.chapterIndex - 1, -1) } ?: st.chapterIndex
+            seek(target, 0)
+        }
+    }
+
+    // ------------------------------------------------------------------ Ayarlar
+
+    fun setRate(rate: Float) {
+        val r = rate.coerceIn(0.3f, 4f)
+        prefs.speechRate = r
+        _state.update { it.copy(rate = r) }
+        engine?.setRate(r)
+        restartIfPlaying()
+    }
+
+    fun setPitch(pitch: Float) {
+        val p = pitch.coerceIn(0.5f, 2f)
+        prefs.speechPitch = p
+        _state.update { it.copy(pitch = p) }
+        engine?.setPitch(p)
+        restartIfPlaying()
+    }
+
+    /** Dipnot/sayfa numarası ayarı değişti: kitabı yeni ayarlarla yeniden aç (konum korunur). */
+    fun reloadContent() {
+        val id = _state.value.bookId ?: return
+        val wasPlaying = _state.value.playing
+        val c = content ?: return
+        pause()
+        savePosition()
+        content = null
+        c.close()
+        open(id, autoPlay = wasPlaying)
+    }
+
+    fun engines(): List<Pair<String, String>> = engine().engines()
+
+    fun setEngine(pkg: String?) {
+        prefs.ttsEngine = pkg
+        prefs.voiceName = null
+        resetEngine()
+    }
+
+    // ------------------------------------------------------------------ Uyku zamanlayıcısı
+
+    fun setSleepTimer(minutes: Int) {
+        cancelSleepTimer()
+        val end = System.currentTimeMillis() + minutes * 60_000L
+        _state.update { it.copy(sleepAt = end, sleepAtChapterEnd = false) }
+        sleepJob = scope.launch {
+            delay(minutes * 60_000L)
+            pause()
+            _state.update { it.copy(sleepAt = null) }
+        }
+    }
+
+    fun setSleepAtChapterEnd() {
+        cancelSleepTimer()
+        _state.update { it.copy(sleepAtChapterEnd = true) }
+    }
+
+    fun cancelSleepTimer() {
+        sleepJob?.cancel()
+        sleepJob = null
+        _state.update { it.copy(sleepAt = null, sleepAtChapterEnd = false) }
+    }
+
+    // ------------------------------------------------------------------ Yer imleri ve konum
+
+    fun addBookmark() {
+        val st = _state.value
+        val id = st.bookId ?: return
+        val ch = _chapter.value ?: return
+        if (ch.sentences.isEmpty()) return
+        val s = ch.sentences[st.sentenceIndex]
+        val excerpt = ch.text(st.sentenceIndex).take(160)
+        scope.launch(Dispatchers.IO) {
+            db.bookmarks().insert(
+                BookmarkEntity(
+                    bookId = id, chapterIndex = ch.index, blockIndex = s.blockIndex,
+                    sentenceIndex = ch.sentenceInBlock(st.sentenceIndex), excerpt = excerpt, note = null,
+                    createdAt = System.currentTimeMillis(),
+                )
+            )
+        }
+    }
+
+    fun goToBookmark(b: BookmarkEntity) {
+        val c = content ?: return
+        scope.launch {
+            val ch = withContext(Dispatchers.IO) { c.chapter(b.chapterIndex.coerceIn(0, c.chapterCount - 1)) }
+            seek(ch.index, ch.sentenceIndexOf(b.blockIndex, b.sentenceIndex))
+        }
+    }
+
+    private fun savePosition() {
+        val st = _state.value
+        val id = st.bookId ?: return
+        val ch = _chapter.value ?: return
+        val c = content ?: return
+        if (ch.sentences.isEmpty() || st.sentenceIndex !in ch.sentences.indices) return
+        val s = ch.sentences[st.sentenceIndex]
+        val pos = PositionEntity(id, ch.index, s.blockIndex, ch.sentenceInBlock(st.sentenceIndex), System.currentTimeMillis())
+        val progress = ((ch.index + st.sentenceIndex.toFloat() / ch.sentences.size.coerceAtLeast(1)) / c.chapterCount)
+            .coerceIn(0f, 1f)
+        scope.launch(Dispatchers.IO) {
+            db.positions().upsert(pos)
+            db.books().setProgress(id, progress)
+        }
+    }
+
+    private suspend fun markFinished(id: Long) {
+        db.books().setFinished(id, true)
+    }
+
+    // ------------------------------------------------------------------ Ses odağı
+
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private var resumeOnFocusGain = false
+    private val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+        )
+        .setWillPauseWhenDucked(true)
+        .setOnAudioFocusChangeListener { change ->
+            scope.launch {
+                when (change) {
+                    AudioManager.AUDIOFOCUS_LOSS -> { resumeOnFocusGain = false; pause() }
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                        if (_state.value.playing) { resumeOnFocusGain = true; pause() }
+                    }
+                    AudioManager.AUDIOFOCUS_GAIN -> {
+                        if (resumeOnFocusGain) { resumeOnFocusGain = false; play() }
+                    }
+                }
+            }
+        }
+        .build()
+
+    private fun requestFocus(): Boolean =
+        audioManager.requestAudioFocus(focusRequest) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+
+    private fun abandonFocus() {
+        audioManager.abandonAudioFocusRequest(focusRequest)
+    }
+
+    companion object {
+        private const val TAG = "Player"
+        private const val LOOKAHEAD = 3
+    }
+}

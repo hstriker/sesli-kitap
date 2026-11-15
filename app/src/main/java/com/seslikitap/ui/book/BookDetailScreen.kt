@@ -50,7 +50,7 @@ import com.seslikitap.ui.appViewModel
 import com.seslikitap.ui.formatSize
 
 @Composable
-fun BookDetailScreen(bookId: Long, onBack: () -> Unit) {
+fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onListen: () -> Unit) {
     val vm = appViewModel(key = "book-$bookId") { BookDetailViewModel(it, bookId) }
     val entity by vm.entity.collectAsStateWithLifecycle()
     val book by vm.book.collectAsStateWithLifecycle()
@@ -107,13 +107,13 @@ fun BookDetailScreen(bookId: Long, onBack: () -> Unit) {
             }
             item {
                 Button(
-                    onClick = {},
-                    enabled = false,
+                    onClick = onListen,
+                    enabled = e.status == BookStatus.OK,
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
                 ) {
                     Icon(Icons.Default.Headphones, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Dinle (bir sonraki sürümde)")
+                    Text(if (e.progress > 0f) "Kaldığın yerden dinle (%${(e.progress * 100).toInt()})" else "Dinle")
                 }
             }
             val err = loadError ?: if (e.status == BookStatus.DRM) e.errorMessage else null

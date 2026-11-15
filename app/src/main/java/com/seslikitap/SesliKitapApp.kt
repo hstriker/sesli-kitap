@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import com.seslikitap.data.AppDatabase
 import com.seslikitap.data.LibraryRepository
+import com.seslikitap.player.Player
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,6 +26,7 @@ class AppContainer(context: Context) {
     val db: AppDatabase = AppDatabase.build(context)
     val library = LibraryRepository(context, db, appScope)
     val prefs = Prefs(context)
+    val player by lazy { Player(appContext, db, prefs) }
 }
 
 class Prefs(context: Context) {
@@ -33,6 +35,40 @@ class Prefs(context: Context) {
     var librarySort: String
         get() = sp.getString("library_sort", "TITLE") ?: "TITLE"
         set(v) = sp.edit().putString("library_sort", v).apply()
+
+    var speechRate: Float
+        get() = sp.getFloat("speech_rate", 1f)
+        set(v) = sp.edit().putFloat("speech_rate", v).apply()
+
+    var speechPitch: Float
+        get() = sp.getFloat("speech_pitch", 1f)
+        set(v) = sp.edit().putFloat("speech_pitch", v).apply()
+
+    /** Seçilen TTS uygulamasının paket adı (null: sistem varsayılanı). */
+    var ttsEngine: String?
+        get() = sp.getString("tts_engine", null)
+        set(v) = sp.edit().putString("tts_engine", v).apply()
+
+    var voiceName: String?
+        get() = sp.getString("voice_name", null)
+        set(v) = sp.edit().putString("voice_name", v).apply()
+
+    var skipFootnotes: Boolean
+        get() = sp.getBoolean("skip_footnotes", true)
+        set(v) = sp.edit().putBoolean("skip_footnotes", v).apply()
+
+    var skipPageNumbers: Boolean
+        get() = sp.getBoolean("skip_page_numbers", true)
+        set(v) = sp.edit().putBoolean("skip_page_numbers", v).apply()
+
+    /** Sayıları, kısaltmaları, Romen rakamlarını Türkçe okunuşa çevir. */
+    var normalizeText: Boolean
+        get() = sp.getBoolean("normalize_text", true)
+        set(v) = sp.edit().putBoolean("normalize_text", v).apply()
+
+    var readerFontSize: Float
+        get() = sp.getFloat("reader_font_size", 18f)
+        set(v) = sp.edit().putFloat("reader_font_size", v).apply()
 }
 
 val Context.container: AppContainer get() = (applicationContext as SesliKitapApp).container
