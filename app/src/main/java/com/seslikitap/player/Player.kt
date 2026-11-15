@@ -434,19 +434,29 @@ class Player(
     }
 
     /** Gemini parçalarının bitiş cümleleri (bölüm başına; her seferinde aynı sınırlar → önbellek tutar). */
-    private var groupEndsFor: Pair<Chapter, IntArray>? = null
+    private var groupEndsFor: Triple<Chapter, Int, IntArray>? = null
 
+    /**
+     * Bölümü eşit boylu parçalara böler (en fazla [Prefs.geminiGroupMax] karakter, mümkünse paragraf sonunda):
+     * bölüm sonunda kısa bir artık parça kalıp günlük istek hakkı boşa gitmesin.
+     */
     private fun groupEnds(ch: Chapter): IntArray {
-        groupEndsFor?.let { (c, ends) -> if (c === ch) return ends }
+        val max = prefs.geminiGroupMax
+        groupEndsFor?.let { (c, m, ends) -> if (c === ch && m == max) return ends }
+        val len = IntArray(ch.sentences.size) { ch.sentences[it].let { s -> s.end - s.start } + 1 }
+        val total = len.sum()
+        val n = ((total + max - 1) / max).coerceAtLeast(1)
+        val target = total / n
         val ends = ArrayList<Int>()
         var acc = 0
         for (i in ch.sentences.indices) {
-            acc += ch.sentences[i].let { it.end - it.start } + 1
+            acc += len[i]
             val last = i == ch.sentences.size - 1
             val paragraphEnd = last || ch.sentences[i + 1].blockIndex != ch.sentences[i].blockIndex
-            if (last || acc >= GROUP_MAX_CHARS || (acc >= GROUP_TARGET_CHARS && paragraphEnd)) { ends.add(i); acc = 0 }
+            val next = if (last) 0 else len[i + 1]
+            if (last || acc + next > max || (acc >= target && paragraphEnd)) { ends.add(i); acc = 0 }
         }
-        return ends.toIntArray().also { groupEndsFor = ch to it }
+        return ends.toIntArray().also { groupEndsFor = Triple(ch, max, it) }
     }
 
     /** Gemini: cümleleri parça parça sıraya koyar; çalan parçadan sonra bir parça önceden hazırlanır. */
@@ -950,8 +960,5 @@ class Player(
     companion object {
         private const val TAG = "Player"
         private const val LOOKAHEAD = 3
-        /** Gemini parça boyu (karakter, ~5-7 dk ses): ücretsiz katmanda günde 10 istek olduğu için uzun parçalar. */
-        private const val GROUP_TARGET_CHARS = 5000
-        private const val GROUP_MAX_CHARS = 6500
     }
 }

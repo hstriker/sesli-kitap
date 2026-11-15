@@ -144,6 +144,11 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("gemini_narrator", true)
         set(v) = sp.edit().putBoolean("gemini_narrator", v).apply()
 
+    /** Gemini parçasının en fazla karakteri; modelin tek seferlik ses tavanına göre kendini ayarlar. */
+    var geminiGroupMax: Int
+        get() = sp.getInt("gemini_group_max", 6500)
+        set(v) = sp.edit().putInt("gemini_group_max", v).apply()
+
     /** Bu zamana kadar (epoch ms) Gemini'ye istek gönderilmez; kota dolunca ayarlanır. */
     var geminiBlockedUntil: Long
         get() = sp.getLong("gemini_blocked_until", 0L)

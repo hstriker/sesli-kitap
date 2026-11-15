@@ -167,7 +167,7 @@ class GeminiTtsEngine(
             val tmp = File(cacheDir, out.name + ".tmp")
             // Dakikalık sınırlar (3 istek, 10 bin token) için istekler sırayla gider;
             // kısa bekletmede bir kez bekleyip yeniden denenir.
-            requestLock.withLock {
+            val r = requestLock.withLock {
                 try {
                     GeminiTts.synthesize(key, text, voice, narrator, tmp, prefs, ::onSwitch)
                 } catch (e: GeminiTts.QuotaException) {
@@ -177,10 +177,16 @@ class GeminiTtsEngine(
                     GeminiTts.synthesize(key, text, voice, narrator, tmp, prefs, ::onSwitch)
                 }
             }
+            val secs = (tmp.length() - 44) / 48_000.0
+            val cps = text.length / secs.coerceAtLeast(1.0)
+            Kayit.log("Gemini parça (${r.model}): ${text.length} karakter, ${secs.toInt()} sn, ${r.tokens} jeton, ${"%.1f".format(cps)} karakter/sn, bitiş=${r.finish}")
+            if (!adaptGroupSize(text.length, r, cps)) {
+                // Ses kesik: metnin sonu okunmamış. Bu parça telefon sesiyle okunur, sonrakiler kısalır.
+                tmp.delete()
+                notice.value = "Gemini bu parçanın sonunu kesti; parçalar kısaltıldı. Bu kısım telefon sesiyle okunuyor."
+                return null
+            }
             tmp.renameTo(out)
-            // Tanı: ses beklenenden çok kısaysa Gemini metnin sonunu kesmiş olabilir
-            val secs = (out.length() - 44) / 48_000.0
-            Kayit.log("Gemini parça: ${text.length} karakter, ${secs.toInt()} sn (${"%.1f".format(text.length / secs.coerceAtLeast(1.0))} karakter/sn)")
             trimCache()
             out
         } catch (e: GeminiTts.QuotaException) {
@@ -197,6 +203,29 @@ class GeminiTtsEngine(
             notice.value = "Gemini sesi alınamadı (${e.message}); telefon sesiyle devam ediliyor."
             null
         }
+    }
+
+    /**
+     * Parça boyunu modelin tek seferlik ses tavanına (16.384 jeton) göre ayarlar: ne kadar uzun parça,
+     * o kadar az istek → günlük sınırdan o kadar çok dinleme. Ses kesikse false.
+     */
+    private fun adaptGroupSize(chars: Int, r: GeminiTts.Result, cps: Double): Boolean {
+        val cur = prefs.geminiGroupMax
+        val truncated = r.finish == "MAX_TOKENS" || cps > 25.0
+        if (truncated) {
+            prefs.geminiGroupMax = (chars * 0.75).toInt().coerceIn(MIN_GROUP, MAX_GROUP)
+            Kayit.log("Gemini sesi kesik; parça boyu ${prefs.geminiGroupMax}")
+            return false
+        }
+        if (r.tokens > 0 && chars > 1000) {
+            val perChar = r.tokens.toDouble() / chars
+            val safe = (TOKEN_BUDGET / perChar).toInt().coerceIn(MIN_GROUP, MAX_GROUP)
+            if (kotlin.math.abs(safe - cur) > cur * 0.1) {
+                prefs.geminiGroupMax = safe
+                Kayit.log("Gemini parça boyu $cur → $safe karakter")
+            }
+        }
+        return true
     }
 
     private fun onSwitch(from: String, to: String) {
@@ -347,5 +376,9 @@ class GeminiTtsEngine(
 
     companion object {
         private const val MAX_CACHE_BYTES = 400L * 1024 * 1024
+        /** Ses jetonu tavanı 16.384; %88'i hedeflenir (okuma hızı parçadan parçaya değişir). */
+        private const val TOKEN_BUDGET = 14_400.0
+        private const val MIN_GROUP = 3000
+        private const val MAX_GROUP = 12_000
     }
 }

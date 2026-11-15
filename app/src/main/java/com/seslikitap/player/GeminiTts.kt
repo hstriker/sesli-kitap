@@ -35,7 +35,8 @@ object GeminiTts {
     private const val FALLBACK_MODEL = "gemini-2.5-flash-preview-tts"
 
 
-    class Result(val file: File, val model: String, val millis: Long)
+    /** [tokens]: üretilen ses jetonu (yoksa 0); [finish]: Google'ın bitiş nedeni (STOP, MAX_TOKENS…). */
+    class Result(val file: File, val model: String, val millis: Long, val tokens: Int = 0, val finish: String = "")
 
     /** Ücretsiz kota doldu. [daily]: günlük sınır (gece yarısı Pasifik saatinde yenilenir); değilse [retrySeconds] sonra. */
     class QuotaException(val daily: Boolean, val retrySeconds: Int, val limit: Int?, message: String) : IOException(message)
@@ -190,7 +191,9 @@ $text
                 val pcm = Base64.decode(data.getString("data"), Base64.DEFAULT)
                 val rate = Regex("rate=(\\d+)").find(data.optString("mimeType"))?.groupValues?.get(1)?.toIntOrNull() ?: 24000
                 writeWav(out, pcm, rate)
-                Result(out, model, System.currentTimeMillis() - t0)
+                val tokens = json.optJSONObject("usageMetadata")?.optInt("candidatesTokenCount", 0) ?: 0
+                val finish = json.optJSONArray("candidates")?.optJSONObject(0)?.optString("finishReason").orEmpty()
+                Result(out, model, System.currentTimeMillis() - t0, tokens, finish)
             } finally {
                 conn.disconnect()
             }
