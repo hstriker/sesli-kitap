@@ -32,7 +32,11 @@ Veritabanı göçleri (1→2→3) gerçek veriyle denenmedi. İlk açılışta a
 - `voiceMode = "gemini"` → `GeminiTtsEngine` (GroupSpeechEngine): Player cümleleri ~2000-3200 karakterlik paragraf
   parçalarına böler (`groupEnds`, sabit sınırlar → önbellek `files/ses-gemini` tutar), bir parça önceden hazırlanır,
   cümle vurgusu süreye orantılı tahmin. 429 → günlük ise Pasifik gece yarısına kadar telefon sesine düşer.
-- Ücretsiz günlük sınır belgelenmemiş (forumlarda ~10 istek/gün). Emre'nin gerçek sınırı ölçmesi bekleniyor.
+- AI Studio → Rate Limit'te görüldü: model **Gemini 3.8 Flash TTS**, ücretsiz: **3 RPM, 10K TPM, 10 RPD**.
+  Bu yüzden parça 5000-6500 karakter (~5-7 dk), istekler sırayla (Mutex); günde ~50-60 dk Gemini sesi beklenir.
+  Kalan sınır Ayarlar → Gemini sesi ve okuyucu ses ayarlarında (`GeminiTts.quotaSummary`).
+- Doğrulanacak: uzun parçada ses kesiliyor mu (tanı kaydında "Gemini parça: … karakter/sn"; normal ~13-15),
+  ilk parçanın bekleme süresi, anlatıcı talimatının sesli okunması (prompt `anlatici2` ile düzeltildi mi?).
 
 ## Kararlar
 
