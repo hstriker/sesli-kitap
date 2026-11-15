@@ -178,7 +178,7 @@ class LibraryRepository(
                         message = "\"${folder.name}\" klasörü okunamadı: ${e.message}"
                         continue
                     }
-                    val existing = db.books().forFolder(folder.uri).associateBy { it.uri }
+                    var existing = db.books().forFolder(folder.uri).associateBy { it.uri }
                     val todo = found.filter { f ->
                         val e = existing[f.uri]
                         full || e == null || e.sizeBytes != f.size || e.lastModified != f.lastModified ||
@@ -186,6 +186,17 @@ class LibraryRepository(
                             (isDrive && e.status == BookStatus.ERROR) // Drive'da geçici hatalar olabilir: yeniden dene
                     }
                     _scan.update { it.copy(phase = "${folder.name}: ${found.size} kitap bulundu", total = it.total + todo.size) }
+
+                    // Yeni kitapları önce dosya adlarıyla hemen ekle: kitaplıkta görünür ve dinlenebilir olsunlar.
+                    // Başlık, yazar ve kapak aşağıda tek tek okunup güncellenir.
+                    val newUris = todo.filter { existing[it.uri] == null }.mapTo(HashSet()) { it.uri }
+                    if (newUris.isNotEmpty()) {
+                        val now = System.currentTimeMillis()
+                        todo.filter { it.uri in newUris }.chunked(200).forEach { chunk ->
+                            db.books().insertAll(chunk.map { placeholder(folder.uri, it, now) })
+                        }
+                        existing = db.books().forFolder(folder.uri).associateBy { it.uri }
+                    }
 
                     val counter = AtomicInteger(0)
                     val failCounter = AtomicInteger(0)
@@ -206,9 +217,9 @@ class LibraryRepository(
                                         return@withPermit
                                     }
                                     if (entity.status != BookStatus.OK) failCounter.incrementAndGet()
+                                    if (f.uri in newUris) newCounter.incrementAndGet()
                                     if (old == null) {
                                         db.books().insert(entity)
-                                        newCounter.incrementAndGet()
                                     } else {
                                         db.books().update(entity.copy(id = old.id, addedAt = old.addedAt,
                                             lastOpenedAt = old.lastOpenedAt, progress = old.progress, finished = old.finished))
@@ -262,6 +273,18 @@ class LibraryRepository(
     }
 
     fun clearScanMessage() = _scan.update { it.copy(lastMessage = null) }
+
+    /** Henüz okunmamış kitap için geçici kayıt (dosya adıyla). parserVersion 0: tarama yarıda kalırsa yeniden okunur. */
+    private fun placeholder(folderUri: String, f: FoundFile, now: Long): BookEntity {
+        val title = TurkishText.cleanMeta(f.name.substringBeforeLast('.'))
+        return BookEntity(
+            uri = f.uri, folderUri = folderUri, fileName = f.name, relativePath = f.relativePath,
+            title = title, author = "", language = null, sizeBytes = f.size, lastModified = f.lastModified,
+            coverPath = null, chapterCount = 0, status = BookStatus.OK, errorMessage = null,
+            searchKey = TurkishText.searchKey("$title ${f.name} ${f.relativePath}"),
+            parserVersion = 0, addedAt = now,
+        )
+    }
 
     /** Kitabı okuyup kaydı hazırlar. Drive'da ağ hatası olursa null (kayıt değiştirilmez). */
     private fun processFile(folderUri: String, f: FoundFile, old: BookEntity?): BookEntity? {

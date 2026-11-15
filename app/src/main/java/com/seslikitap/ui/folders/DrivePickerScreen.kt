@@ -27,6 +27,12 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -150,16 +156,93 @@ class DrivePickerViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    val linkError = MutableStateFlow<String?>(null)
+    val linkBusy = MutableStateFlow(false)
+
+    /** drive.google.com klasör bağlantısından (ya da doğrudan klasör kimliğinden) ekler. */
+    fun addByLink(text: String, onDone: () -> Unit) {
+        val id = folderIdFromLink(text)
+        if (id == null) {
+            linkError.value = "Bu bir Drive klasör bağlantısına benzemiyor. Örnek: drive.google.com/drive/folders/1AbC…"
+            return
+        }
+        linkBusy.value = true
+        linkError.value = null
+        viewModelScope.launch {
+            try {
+                val item = withContext(Dispatchers.IO) { container.drive.metadata(id) }
+                if (!item.isFolder) {
+                    linkError.value = "Bu bağlantı bir klasöre değil, bir dosyaya ait."
+                } else {
+                    container.library.addDriveFolder(item.id, item.name)
+                    onDone()
+                }
+            } catch (e: Exception) {
+                linkError.value = e.message ?: "Klasör bulunamadı"
+            } finally {
+                linkBusy.value = false
+            }
+        }
+    }
+
     fun addCurrent() {
         val c = ui.value.path.last()
         container.library.addDriveFolder(c.id, c.name)
     }
 }
 
+/** "https://drive.google.com/drive/folders/<id>?usp=..." , "...?id=<id>" ya da çıplak kimlik. */
+fun folderIdFromLink(text: String): String? {
+    val t = text.trim()
+    Regex("""folders/([A-Za-z0-9_-]{10,})""").find(t)?.let { return it.groupValues[1] }
+    Regex("""[?&]id=([A-Za-z0-9_-]{10,})""").find(t)?.let { return it.groupValues[1] }
+    if (Regex("""[A-Za-z0-9_-]{15,}""").matches(t)) return t
+    return null
+}
+
 @Composable
 fun DrivePickerScreen(onBack: () -> Unit, onAdded: () -> Unit) {
     val vm = appViewModel { DrivePickerViewModel(it) }
     val ui by vm.ui.collectAsStateWithLifecycle()
+    val linkError by vm.linkError.collectAsStateWithLifecycle()
+    val linkBusy by vm.linkBusy.collectAsStateWithLifecycle()
+    var linkDialog by remember { mutableStateOf(false) }
+    var linkText by remember { mutableStateOf("") }
+
+    if (linkDialog) {
+        AlertDialog(
+            onDismissRequest = { linkDialog = false },
+            title = { Text("Klasör bağlantısıyla ekle") },
+            text = {
+                Column {
+                    Text(
+                        "Drive'da kitap klasörünü açın ve adres çubuğundaki bağlantıyı kopyalayın " +
+                            "(…drive.google.com/drive/folders/…). Ya da Drive uygulamasında klasör → ⋮ → Bağlantıyı kopyala.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = linkText,
+                        onValueChange = { linkText = it },
+                        placeholder = { Text("https://drive.google.com/drive/folders/…") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    linkError?.let {
+                        Spacer(Modifier.height(8.dp))
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = linkText.isNotBlank() && !linkBusy,
+                    onClick = { vm.addByLink(linkText) { linkDialog = false; onAdded() } },
+                ) { Text(if (linkBusy) "Ekleniyor…" else "Ekle") }
+            },
+            dismissButton = { TextButton(onClick = { linkDialog = false }) { Text("Vazgeç") } },
+        )
+    }
 
     val consentLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { res ->
         vm.onConsentResult(res.data)
@@ -179,6 +262,15 @@ fun DrivePickerScreen(onBack: () -> Unit, onAdded: () -> Unit) {
                 title = { Text("Google Drive'dan ekle") },
                 navigationIcon = {
                     IconButton(onClick = { if (!vm.back()) onBack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
+                },
+                actions = {
+                    if (ui.connected) {
+                        TextButton(onClick = { linkText = ""; vm.linkError.value = null; linkDialog = true }) {
+                            Icon(Icons.Default.Link, null)
+                            Spacer(Modifier.size(4.dp))
+                            Text("Bağlantıyla ekle")
+                        }
+                    }
                 },
             )
         },
