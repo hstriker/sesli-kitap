@@ -17,6 +17,7 @@ class SesliKitapApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        Kayit.init(this)
         container = AppContainer(this)
     }
 }

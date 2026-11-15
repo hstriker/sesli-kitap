@@ -3,6 +3,7 @@ package com.seslikitap.drive
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import com.seslikitap.Kayit
 import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.api.identity.AuthorizationRequest
 import com.google.android.gms.auth.api.identity.AuthorizationResult
@@ -39,10 +40,16 @@ class DriveAuth(private val context: Context) {
     @Volatile private var tokenAt = 0L
 
     /** Arka planda (ekransız) yetki ister; onay gerekiyorsa NeedsConsent döner. Ana iş parçacığında çağırmayın. */
-    fun authorizeBlocking(): AuthOutcome = try {
-        handle(Tasks.await(client.authorize(request), 30, TimeUnit.SECONDS))
-    } catch (e: Exception) {
-        AuthOutcome.Failed(explain(e))
+    fun authorizeBlocking(): AuthOutcome {
+        val t0 = System.currentTimeMillis()
+        val r = try {
+            handle(Tasks.await(client.authorize(request), 30, TimeUnit.SECONDS))
+        } catch (e: Exception) {
+            Kayit.error("Google yetki hatası", e)
+            AuthOutcome.Failed(explain(e))
+        }
+        Kayit.log("Google yetki: ${r.javaClass.simpleName} (${System.currentTimeMillis() - t0} ms)")
+        return r
     }
 
     /** Onay ekranından dönen sonuç. */

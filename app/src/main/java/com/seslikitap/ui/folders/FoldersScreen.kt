@@ -5,6 +5,7 @@ package com.seslikitap.ui.folders
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -69,6 +70,8 @@ fun FoldersScreen(onBack: () -> Unit, onAddDrive: () -> Unit) {
     val counts by vm.counts.collectAsStateWithLifecycle()
     val scan by vm.scan.collectAsStateWithLifecycle()
     var confirmRemove by remember { mutableStateOf<FolderEntity?>(null) }
+    var showLog by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) vm.add(uri)
@@ -136,10 +139,52 @@ fun FoldersScreen(onBack: () -> Unit, onAddDrive: () -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 4.dp),
                     )
+                    Spacer(Modifier.height(16.dp))
+                    androidx.compose.material3.TextButton(onClick = { showLog = true }) {
+                        Text("Tanı kaydı (sorun bildirmek için)")
+                    }
                     Spacer(Modifier.height(96.dp))
                 }
             }
         }
+    }
+
+    if (showLog) {
+        val text = remember { com.seslikitap.Kayit.text() }
+        AlertDialog(
+            onDismissRequest = { showLog = false },
+            title = { Text("Tanı kaydı") },
+            text = {
+                Column {
+                    Text(
+                        "\"Kopyala\"ya basıp sohbete yapıştırın ya da \"Paylaş\" ile gönderin.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text.takeLast(4000).ifBlank { "Kayıt boş" },
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.height(320.dp).verticalScroll(androidx.compose.foundation.rememberScrollState(Int.MAX_VALUE)),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("Sesli Kitap tanı kaydı", text.takeLast(30_000)))
+                    android.widget.Toast.makeText(context, "Kopyalandı", android.widget.Toast.LENGTH_SHORT).show()
+                }) { Text("Kopyala") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(android.content.Intent.EXTRA_TEXT, text.takeLast(60_000))
+                    }
+                    context.startActivity(android.content.Intent.createChooser(send, "Tanı kaydını paylaş"))
+                }) { Text("Paylaş") }
+            },
+        )
     }
 
     confirmRemove?.let { f ->

@@ -199,7 +199,7 @@ fun LibraryScreen(
                         Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
                             Text(
                                 if (ui.totalCount == 0) {
-                                    if (scan.running) "Kitaplar aranıyor…" else "Seçilen klasörlerde EPUB bulunamadı."
+                                    if (scan.running) "Kitaplar aranıyor…\n${scan.phase}" else "Seçilen klasörlerde EPUB bulunamadı."
                                 } else "Aramanızla eşleşen kitap yok.",
                                 textAlign = TextAlign.Center,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,

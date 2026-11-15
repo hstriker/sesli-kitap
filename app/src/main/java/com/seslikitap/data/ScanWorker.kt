@@ -13,6 +13,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
+import com.seslikitap.Kayit
 import com.seslikitap.R
 import com.seslikitap.container
 import kotlinx.coroutines.coroutineScope
@@ -26,10 +27,12 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         val repo = applicationContext.container.library
         val full = inputData.getBoolean(KEY_FULL, false)
         val drive = inputData.getBoolean(KEY_DRIVE, true)
+        Kayit.log("Tarama görevi başladı (deneme ${runAttemptCount + 1})")
         try {
             setForeground(info("Kitaplık taranıyor…", 0, 0))
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             // Ön plana alınamazsa (ör. sistem kısıtı) yine de çalışmaya devam et.
+            Kayit.error("Tarama ön plana alınamadı", e)
         }
         coroutineScope {
             val progress = launch {
@@ -43,6 +46,9 @@ class ScanWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
             }
             try {
                 repo.runScan(full, drive)
+            } catch (e: Throwable) {
+                Kayit.error("Tarama görevi durdu", e)
+                throw e
             } finally {
                 progress.cancel()
             }

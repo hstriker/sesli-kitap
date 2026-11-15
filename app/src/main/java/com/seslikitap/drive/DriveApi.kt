@@ -1,6 +1,7 @@
 package com.seslikitap.drive
 
 import android.content.Context
+import com.seslikitap.Kayit
 import com.seslikitap.core.CachedRangeSource
 import com.seslikitap.core.ZipArchive
 import org.json.JSONObject
@@ -149,6 +150,53 @@ class DriveApi(private val auth: DriveAuth) {
         return out
     }
 
+    /**
+     * Seçilen klasörün içini (alt klasörler dahil) gezer; alt klasörler 8'er paralel okunur.
+     * Drive'ın geri kalanına dokunmaz: büyük Drive'larda belirli bir kitap klasörü için en hızlı yol.
+     */
+    fun listEpubsInFolder(rootId: String, onProgress: (String) -> Unit = {}): List<DriveBook> {
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(8)
+        val result = java.util.concurrent.ConcurrentLinkedQueue<DriveBook>()
+        val visited = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+        val pending = java.util.concurrent.atomic.AtomicInteger(0)
+        val foldersDone = java.util.concurrent.atomic.AtomicInteger(0)
+        val error = java.util.concurrent.atomic.AtomicReference<Throwable?>(null)
+        val finished = java.util.concurrent.CountDownLatch(1)
+
+        fun submit(id: String, rel: String) {
+            if (!visited.add(id) || error.get() != null) return
+            pending.incrementAndGet()
+            pool.execute {
+                try {
+                    for (item in listChildren(id)) {
+                        when {
+                            item.isFolder -> submit(item.id, "$rel${item.name}/")
+                            item.isEpub && item.size != 0L -> result.add(DriveBook(item, rel))
+                        }
+                    }
+                    val n = foldersDone.incrementAndGet()
+                    if (n % 5 == 0 || n == 1) onProgress("$n klasör tarandı, ${result.size} kitap bulundu…")
+                } catch (t: Throwable) {
+                    error.compareAndSet(null, t)
+                } finally {
+                    if (pending.decrementAndGet() == 0) finished.countDown()
+                }
+            }
+        }
+
+        val t0 = System.currentTimeMillis()
+        try {
+            submit(rootId, "")
+            finished.await()
+        } finally {
+            pool.shutdownNow()
+        }
+        error.get()?.let { throw if (it is IOException) it else IOException(it.message, it) }
+        Kayit.log("Klasör listesi: ${foldersDone.get()} klasör, ${result.size} kitap, ${System.currentTimeMillis() - t0} ms")
+        onProgress("${result.size} kitap bulundu")
+        return result.toList()
+    }
+
     private fun rootFolderId(): String =
         JSONObject(String(request("$BASE/files/root?fields=id"), Charsets.UTF_8)).getString("id")
 
@@ -177,6 +225,18 @@ class DriveApi(private val auth: DriveAuth) {
 
     /** Dosyayı tamamen indirir (önce geçici dosyaya, bitince yerine taşır). */
     fun download(fileId: String, dest: File) {
+        val t0 = System.currentTimeMillis()
+        Kayit.log("İndirme başladı: $fileId")
+        try {
+            downloadInner(fileId, dest)
+            Kayit.log("İndirme bitti: $fileId, ${dest.length()} B, ${System.currentTimeMillis() - t0} ms")
+        } catch (e: IOException) {
+            Kayit.error("İndirme başarısız: $fileId", e)
+            throw e
+        }
+    }
+
+    private fun downloadInner(fileId: String, dest: File) {
         val tmp = File(dest.parentFile, dest.name + ".part")
         var attempt = 0
         var refresh = false
@@ -214,10 +274,22 @@ class DriveApi(private val auth: DriveAuth) {
 
     // ------------------------------------------------------------------ HTTP
 
+    private fun describe(url: String, range: Pair<Long, Long>?): String {
+        val path = url.removePrefix(BASE).substringBefore('?')
+        val kind = when {
+            url.contains("alt=media") -> "içerik"
+            path == "/files" -> "liste"
+            else -> "bilgi"
+        }
+        return "$kind ${path.removePrefix("/files").take(40)}" + (range?.let { " [${it.first}-${it.second}]" } ?: "")
+    }
+
     private fun request(url: String, range: Pair<Long, Long>? = null): ByteArray {
         var attempt = 0
         var refresh = false
+        val label = describe(url, range)
         while (true) {
+            val t0 = System.currentTimeMillis()
             try {
                 val conn = open(url, range, auth.tokenBlocking(refresh))
                 try {
@@ -225,6 +297,8 @@ class DriveApi(private val auth: DriveAuth) {
                     if (code == 200 || code == 206) {
                         val expected = range?.let { (it.second - it.first + 1).toInt() }
                         val bytes = readAll(conn.inputStream, Int.MAX_VALUE)
+                        val ms = System.currentTimeMillis() - t0
+                        if (ms > 3000 || range == null) Kayit.log("Drive $label → $code, ${bytes.size} B, $ms ms")
                         // Sunucu aralığı yok sayıp tüm dosyayı gönderdiyse gereken kısmı kes.
                         if (range != null && code == 200 && expected != null && bytes.size > expected) {
                             val s = range.first.toInt()
@@ -233,6 +307,7 @@ class DriveApi(private val auth: DriveAuth) {
                         return bytes
                     }
                     val body = readText(conn.errorStream, 4096)
+                    Kayit.log("Drive $label → HATA $code (${System.currentTimeMillis() - t0} ms): ${body.take(300).replace('\n', ' ')}")
                     if (code == 401 && !refresh) { refresh = true; continue }
                     if (shouldRetry(code, body) && attempt < MAX_RETRY) { backoff(attempt++); continue }
                     throw IOException(errorMessage(code, body))
@@ -240,6 +315,7 @@ class DriveApi(private val auth: DriveAuth) {
                     conn.disconnect()
                 }
             } catch (e: IOException) {
+                Kayit.error("Drive $label istisna (deneme ${attempt + 1}, ${System.currentTimeMillis() - t0} ms)", e)
                 if (e is DriveAuthException || attempt >= MAX_RETRY || !isTransient(e)) throw friendly(e)
                 backoff(attempt++)
             }
@@ -252,6 +328,8 @@ class DriveApi(private val auth: DriveAuth) {
         conn.readTimeout = 60_000
         conn.setRequestProperty("Authorization", "Bearer $token")
         if (range != null) conn.setRequestProperty("Range", "bytes=${range.first}-${range.second}")
+        // Dosya içeriğinde sıkıştırma istemiyoruz: aralıklı okumayı bozabilir.
+        if (url.contains("alt=media")) conn.setRequestProperty("Accept-Encoding", "identity")
         return conn
     }
 

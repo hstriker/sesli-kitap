@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
+import com.seslikitap.Kayit
 import com.seslikitap.Prefs
 import com.seslikitap.container
 import kotlinx.coroutines.sync.Mutex
@@ -153,6 +154,8 @@ class LibraryRepository(
     }
 
     private suspend fun doScan(full: Boolean, includeDrive: Boolean) {
+        Kayit.log("Tarama başladı (tam=$full, drive=$includeDrive)")
+        val scanStart = System.currentTimeMillis()
         run {
             _scan.value = ScanState(running = true, phase = "Klasörler okunuyor…")
             var added = 0
@@ -163,9 +166,12 @@ class LibraryRepository(
                 var driveOk = true
                 for (folder in folders) {
                     val isDrive = DriveUri.isDrive(folder.uri)
+                    Kayit.log("Klasör listeleniyor: ${folder.name} (${if (isDrive) "Drive" else "telefon"})")
+                    val listStart = System.currentTimeMillis()
                     val found = try {
                         if (isDrive) listDrive(folder) else listEpubs(Uri.parse(folder.uri))
                     } catch (e: DriveAuthException) {
+                        Kayit.error("Drive yetkisi yok", e)
                         message = e.message
                         driveOk = false
                         continue
@@ -174,10 +180,11 @@ class LibraryRepository(
                         continue
                     } catch (e: Exception) {
                         if (isDrive) driveOk = false
-                        Log.w(TAG, "Klasör listelenemedi", e)
+                        Kayit.error("Klasör listelenemedi: ${folder.name}", e)
                         message = "\"${folder.name}\" klasörü okunamadı: ${e.message}"
                         continue
                     }
+                    Kayit.log("Klasör listelendi: ${folder.name}, ${found.size} kitap, ${System.currentTimeMillis() - listStart} ms")
                     var existing = db.books().forFolder(folder.uri).associateBy { it.uri }
                     val todo = found.filter { f ->
                         val e = existing[f.uri]
@@ -255,9 +262,10 @@ class LibraryRepository(
                     prefs.lastDriveScan = System.currentTimeMillis()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Tarama hatası", e)
+                Kayit.error("Tarama hatası", e)
                 message = "Tarama sırasında hata: ${e.message}"
             } finally {
+                Kayit.log("Tarama bitti: $added yeni, $failed sorunlu, ${System.currentTimeMillis() - scanStart} ms")
                 _scan.update {
                     it.copy(
                         running = false, phase = "", added = added, failed = failed,
@@ -289,6 +297,17 @@ class LibraryRepository(
     /** Kitabı okuyup kaydı hazırlar. Drive'da ağ hatası olursa null (kayıt değiştirilmez). */
     private fun processFile(folderUri: String, f: FoundFile, old: BookEntity?): BookEntity? {
         val now = System.currentTimeMillis()
+        val r = processFileInner(folderUri, f, old, now)
+        val ms = System.currentTimeMillis() - now
+        when {
+            r == null -> Kayit.log("Kitap atlandı (ağ): ${f.name} ($ms ms)")
+            r.status != BookStatus.OK -> Kayit.log("Kitap sorunlu: ${f.name}: ${r.errorMessage} ($ms ms)")
+            ms > 5000 -> Kayit.log("Kitap yavaş okundu: ${f.name} ($ms ms)")
+        }
+        return r
+    }
+
+    private fun processFileInner(folderUri: String, f: FoundFile, old: BookEntity?, now: Long): BookEntity? {
         val fallbackTitle = f.name.substringBeforeLast('.')
         var book: EpubBook? = null
         var coverPath: String? = null
@@ -354,10 +373,17 @@ class LibraryRepository(
         return false
     }
 
-    private fun listDrive(folder: FolderEntity): List<FoundFile> =
-        context.container.drive.listEpubsUnder(DriveUri.id(folder.uri)) { msg ->
-            _scan.update { it.copy(phase = "${folder.name}: $msg") }
-        }.map { FoundFile(DriveUri.file(it.item.id), it.item.name, it.item.size, it.item.modified, it.relativePath) }
+    /**
+     * Drive klasörünün kitapları. "Drive'ım" (tüm Drive) seçildiyse toplu sorgu,
+     * belirli bir klasör seçildiyse yalnızca o klasörün içi taranır.
+     */
+    private fun listDrive(folder: FolderEntity): List<FoundFile> {
+        val id = DriveUri.id(folder.uri)
+        val drive = context.container.drive
+        val progress: (String) -> Unit = { msg -> _scan.update { it.copy(phase = "${folder.name}: $msg") } }
+        val books = if (id == "root") drive.listEpubsUnder(id, progress) else drive.listEpubsInFolder(id, progress)
+        return books.map { FoundFile(DriveUri.file(it.item.id), it.item.name, it.item.size, it.item.modified, it.relativePath) }
+    }
 
     /** Klasör ağacını DocumentsContract ile dolaşır (DocumentFile'dan çok daha hızlı). */
     private fun listEpubs(treeUri: Uri): List<FoundFile> {

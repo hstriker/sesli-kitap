@@ -8,6 +8,7 @@ import android.media.AudioManager
 import android.net.Uri
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.seslikitap.Kayit
 import com.seslikitap.Prefs
 import com.seslikitap.core.BlockKind
 import com.seslikitap.core.EpubParser
@@ -139,6 +140,8 @@ class Player(
             pause()
             engine()
             _state.update { it.copy(loading = true, error = null, bookId = bookId) }
+            val t0 = System.currentTimeMillis()
+            Kayit.log("Kitap açılıyor: $bookId")
             try {
                 val entity = withContext(Dispatchers.IO) { db.books().get(bookId) }
                     ?: throw IllegalStateException("Kitap bulunamadı")
@@ -175,9 +178,10 @@ class Player(
                     )
                 }
                 showChapter(startChapter, if (startChapter == ch) sentence else 0)
+                Kayit.log("Kitap açıldı: ${entity.title} (${System.currentTimeMillis() - t0} ms)")
                 if (autoPlay) play()
             } catch (e: Throwable) {
-                Log.e(TAG, "Kitap açılamadı", e)
+                Kayit.error("Kitap açılamadı ($bookId)", e)
                 _state.update { it.copy(loading = false, error = e.message ?: "Kitap açılamadı") }
             }
         }
