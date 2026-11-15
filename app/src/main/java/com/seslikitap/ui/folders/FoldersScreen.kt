@@ -160,6 +160,8 @@ fun FoldersScreen(onBack: (() -> Unit)?, onAddDrive: () -> Unit) {
                     Spacer(Modifier.height(16.dp))
                     GeminiKeySection()
                     Spacer(Modifier.height(16.dp))
+                    GeminiVoiceTrialSection()
+                    Spacer(Modifier.height(16.dp))
                     HorizontalDivider()
                     Spacer(Modifier.height(16.dp))
                     BackupSection()
