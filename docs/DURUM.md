@@ -40,6 +40,20 @@ Veritabanı göçleri (1→2→3) gerçek veriyle denenmedi. İlk açılışta a
 - Doğrulanacak: uzun parçada ses kesiliyor mu (tanı kaydında "Gemini parça: … karakter/sn"; normal ~13-15),
   ilk parçanın bekleme süresi, anlatıcı talimatının sesli okunması (prompt `anlatici2` ile düzeltildi mi?).
 
+## Emre'nin seçtiği yeni özellikler (henüz başlanmadı; "hemen başlama, önce liste büyüsün" dedi)
+
+Amaç: uygulama "yoğun hayattan kaçış ve rahatlama alanı" olacak; yalnızca kitap şart değil.
+- **A (tamamı):** 1 kullanılmayan Gemini hakkını sıfırlanmadan önce sıradaki bölümlere harca (biriktirme),
+  2 kulaklık düğmesiyle 30 sn geri/ileri + bölüm atlama, 3 diyaloglarda farklı Gemini sesi, 4 kitaba sor (spoiler'sız),
+  5 karakter listesi (okunan yere kadar), 6 bölüm sonu sesli özet, 7 kitap öner (arşivden), 8 okuma listesi/sıra,
+  9 çift kitap bulucu, 10 sesli not → alıntılara.
+- **B (rahatlama listesinden):** 3 sakin ekran (kararan ekran + yavaş animasyon), 4 "Benim zamanım" (Rahatsız Etmeyin),
+  5 uyku hikâyeleri (Gemini yazar + okur), 6 rehberli nefes/gevşeme (nefes dairesi), 8 günün öyküsü/şiiri (arşivden),
+  9 "Bugün nasılsın?" ruh hâline göre öneri, 10 sesli macera (seçimli hikâye), 11 günün alıntısı (ana ekran/widget),
+  12 akşam sesli notu (yalnızca telefonda), 13 baskısız istatistik dili, 14 yürüyüş modu.
+  (B1 arka plan sesleri, B2 kitaba göre ortam, B7 yumuşak kapanış seçilmedi.)
+- Ek liste (C: mini oyunlar vb.) önerildi, seçim bekleniyor.
+
 ## Kararlar
 
 - **Ücretli/kart isteyen hiçbir adım önerme**; önce ücret/ön ödeme riskini açıkça söyle (doğal ses olayı).
