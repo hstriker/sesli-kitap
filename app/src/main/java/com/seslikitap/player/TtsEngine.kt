@@ -29,7 +29,10 @@ sealed interface EngineStatus {
 interface SpeechEngine {
     val status: StateFlow<EngineStatus>
     var listener: SpeechListener?
-    fun speak(id: String, text: String, flush: Boolean)
+    /** [alternate]: diyalog cümlesi; ayarlıysa ikinci sesle okunur. */
+    fun speak(id: String, text: String, flush: Boolean, alternate: Boolean = false)
+    /** Diyaloglar için ikinci ses (null: kapalı). */
+    fun setDialogVoice(name: String?) {}
     fun stop()
     fun setRate(rate: Float)
     fun setPitch(pitch: Float)
@@ -100,8 +103,23 @@ class AndroidTtsEngine(context: Context, enginePackage: String? = null) : Speech
 
     override fun setVolume(volume: Float) { this.volume = volume }
 
-    override fun speak(id: String, text: String, flush: Boolean) {
+    private var mainVoiceName: String? = null
+    private var dialogVoiceName: String? = null
+
+    override fun setDialogVoice(name: String?) { dialogVoiceName = name }
+
+    override fun speak(id: String, text: String, flush: Boolean, alternate: Boolean) {
         val t = tts ?: return
+        // Ses, speak() çağrısı anında isteğe eklenir; diyalog için geçici olarak değiştirip geri alıyoruz.
+        val wanted = if (alternate && dialogVoiceName != null) dialogVoiceName else mainVoiceName
+        if (wanted != null) {
+            if (t.voice?.name != wanted) {
+                runCatching { t.voices?.firstOrNull { it.name == wanted } }.getOrNull()?.let { t.voice = it }
+            }
+        } else if (dialogVoiceName != null && t.voice?.name == dialogVoiceName) {
+            // Ana ses "varsayılan Türkçe" ise diyalog sesinden varsayılana dön
+            t.setLanguage(turkish)
+        }
         val params = Bundle()
         if (volume < 1f) params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume)
         val r = t.speak(text, if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD, params, id)
@@ -143,6 +161,7 @@ class AndroidTtsEngine(context: Context, enginePackage: String? = null) : Speech
     }
 
     override fun setVoice(name: String?) {
+        mainVoiceName = name
         val t = tts ?: return
         if (name == null) {
             t.setLanguage(turkish)

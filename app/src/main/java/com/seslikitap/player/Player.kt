@@ -118,6 +118,7 @@ class Player(
                     e.setRate(_state.value.rate)
                     e.setPitch(_state.value.pitch)
                     if (cloud) e.setVoice(prefs.cloudVoice) else prefs.voiceName?.let { e.setVoice(it) }
+                    e.setDialogVoice(if (cloud) prefs.cloudDialogVoice else prefs.phoneDialogVoice)
                 }
             }
         }
@@ -134,6 +135,19 @@ class Player(
     }
 
     val usingCloudVoice: Boolean get() = prefs.voiceMode == "cloud"
+
+    /** Diyaloglar için ikinci ses; null kapatır. */
+    fun setDialogVoice(name: String?) {
+        prefs.dialogVoiceEnabled = name != null
+        if (name != null) {
+            if (usingCloudVoice) prefs.cloudDialogVoice = name else prefs.phoneDialogVoice = name
+        }
+        engine().setDialogVoice(name)
+        restartIfPlaying()
+    }
+
+    fun currentDialogVoice(): String? = if (!prefs.dialogVoiceEnabled) null
+    else if (usingCloudVoice) prefs.cloudDialogVoice else prefs.phoneDialogVoice
 
     /** Telefon sesi ile doğal ses (Google WaveNet) arasında geçiş. */
     fun setCloudVoice(on: Boolean) {
@@ -338,7 +352,8 @@ class Player(
         var first = flush
         while (queuedUntil < ch.sentences.size - 1 && queuedUntil - _state.value.sentenceIndex < LOOKAHEAD - 1) {
             queuedUntil++
-            e.speak(utteranceId(ch.index, queuedUntil), spokenText(ch, queuedUntil), first)
+            val alt = prefs.dialogVoiceEnabled && ch.dialog.getOrElse(queuedUntil) { false }
+            e.speak(utteranceId(ch.index, queuedUntil), spokenText(ch, queuedUntil), first, alt)
             first = false
         }
     }

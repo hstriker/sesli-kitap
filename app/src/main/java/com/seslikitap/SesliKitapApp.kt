@@ -93,6 +93,19 @@ class Prefs(context: Context) {
         get() = sp.getFloat("chars_per_second", 14f)
         set(v) = sp.edit().putFloat("chars_per_second", v).apply()
 
+    /** Diyaloglar ikinci sesle okunsun mu. */
+    var dialogVoiceEnabled: Boolean
+        get() = sp.getBoolean("dialog_voice", false)
+        set(v) = sp.edit().putBoolean("dialog_voice", v).apply()
+
+    var cloudDialogVoice: String?
+        get() = sp.getString("cloud_dialog_voice", "tr-TR-Wavenet-A")
+        set(v) = sp.edit().putString("cloud_dialog_voice", v).apply()
+
+    var phoneDialogVoice: String?
+        get() = sp.getString("phone_dialog_voice", null)
+        set(v) = sp.edit().putString("phone_dialog_voice", v).apply()
+
     var speechRate: Float
         get() = sp.getFloat("speech_rate", 1f)
         set(v) = sp.edit().putFloat("speech_rate", v).apply()

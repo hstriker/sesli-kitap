@@ -211,6 +211,25 @@ fun SettingsSheet(fontSize: Float, onFontSize: (Float) -> Unit, onDismiss: () ->
                 )
             }
 
+            // Diyaloglarda farklı ses
+            var dialogVoice by remember { mutableStateOf(player.currentDialogVoice()) }
+            if (voices.size >= 2) {
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                SwitchRow("Diyaloglarda farklı ses (— Evet, «Gel» gibi konuşmalar)", dialogVoice != null) { on ->
+                    val pick = if (on) voices.firstOrNull { it.name != selectedVoice }?.name else null
+                    dialogVoice = pick
+                    player.setDialogVoice(pick)
+                }
+                if (dialogVoice != null) {
+                    Text("Diyalog sesi", style = MaterialTheme.typography.labelLarge)
+                    voices.forEach { v ->
+                        RadioRow(v.label, dialogVoice == v.name) {
+                            dialogVoice = v.name; player.setDialogVoice(v.name)
+                        }
+                    }
+                }
+            }
+
             if (engines.size > 1) {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 Text("Seslendirme motoru", style = MaterialTheme.typography.titleSmall)

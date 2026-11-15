@@ -75,9 +75,16 @@ class CloudTtsEngine(
 
     // ------------------------------------------------------------------ SpeechEngine
 
-    override fun speak(id: String, text: String, flush: Boolean) {
+    @Volatile private var dialogVoice: String? = null
+
+    override fun setDialogVoice(name: String?) {
+        dialogVoice = name?.takeIf { n -> VOICES.any { it.first == n } }
+    }
+
+    override fun speak(id: String, text: String, flush: Boolean, alternate: Boolean) {
         if (flush) stop()
-        val r = rate; val p = pitch; val v = voice
+        val r = rate; val p = pitch
+        val v = if (alternate) dialogVoice ?: voice else voice
         val audio = ioScope.async { synthesize(text, v, r, p) }
         items.trySend(Item(id, audio))
         ensureLoop()

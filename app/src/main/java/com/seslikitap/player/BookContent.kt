@@ -1,6 +1,7 @@
 package com.seslikitap.player
 
 import com.seslikitap.core.ChapterTextExtractor
+import com.seslikitap.core.DialogDetector
 import com.seslikitap.core.EpubBook
 import com.seslikitap.core.ExtractOptions
 import com.seslikitap.core.SentenceSplitter
@@ -18,6 +19,8 @@ class Chapter(
     val sentences: List<Sentence>,
     /** HTML id -> cümle indeksi (içindekiler bağlantıları için). */
     private val anchorToSentence: Map<String, Int>,
+    /** Cümle konuşma (diyalog) mu? */
+    val dialog: BooleanArray = BooleanArray(sentences.size),
 ) {
     fun text(i: Int): String = sentences[i].let { blocks[it.blockIndex].text.substring(it.start, it.end) }
 
@@ -78,17 +81,20 @@ class BookContent(
         }
         val sentences = ArrayList<Sentence>()
         val anchors = HashMap<String, Int>()
+        val dialog = ArrayList<Boolean>()
         text.blocks.forEachIndexed { bi, block ->
             val first = sentences.size
             block.anchors.forEach { anchors.putIfAbsent(it, first) }
-            SentenceSplitter.split(block.text).forEach { sentences.add(Sentence(bi, it.start, it.end)) }
+            val spans = SentenceSplitter.split(block.text)
+            spans.forEach { sentences.add(Sentence(bi, it.start, it.end)) }
+            DialogDetector.detect(block.text, spans).forEach { dialog.add(it) }
             if (sentences.size == first) {
                 // Bu paragraftan cümle çıkmadı: bağlantılar sonraki cümleye işaret etsin.
                 block.anchors.forEach { anchors[it] = first }
             }
         }
         val title = epub.toc.firstOrNull { it.spineIndex == index }?.title ?: text.title ?: "Bölüm ${index + 1}"
-        return Chapter(index, title, text.blocks, sentences, anchors)
+        return Chapter(index, title, text.blocks, sentences, anchors, dialog.toBooleanArray())
     }
 
     /** [from] dahil, [direction] yönünde ilk boş olmayan bölüm; yoksa null. */
