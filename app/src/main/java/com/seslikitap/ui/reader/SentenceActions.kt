@@ -130,6 +130,16 @@ fun SentenceActionsSheet(
                     m.r.anlamlar.forEachIndexed { i, a ->
                         Text("${i + 1}. $a", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
                     }
+                    val ctx = androidx.compose.ui.platform.LocalContext.current
+                    var added by remember(m) { mutableStateOf(false) }
+                    androidx.compose.material3.TextButton(enabled = !added, onClick = {
+                        com.seslikitap.data.CalmStore.add(
+                            ctx, com.seslikitap.data.CalmStore.VOCAB,
+                            org.json.JSONObject().put("t", System.currentTimeMillis()).put("w", m.r.madde)
+                                .put("m", m.r.anlamlar.firstOrNull() ?: "").put("b", player.state.value.bookTitle),
+                        )
+                        added = true
+                    }) { Text(if (added) "Defterine eklendi ✓" else "Kelime defterime ekle") }
                 }
             }
             Spacer(Modifier.height(32.dp))

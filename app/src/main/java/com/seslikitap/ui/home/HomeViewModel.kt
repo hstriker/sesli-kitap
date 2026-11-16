@@ -42,6 +42,8 @@ data class HomeUi(
     val neglected: BookEntity? = null,
     /** Bu hafta dinlenen süre. */
     val weekMs: Long = 0,
+    /** Günün alıntısı (her gün bir tane, bütün alıntılar arasından). */
+    val dayQuote: QuoteEntity? = null,
 )
 
 /** Arka arkaya dinlenen gün sayısı (bugün ya da dün biten seri). En az 1 dakika dinlenen günler sayılır. */
@@ -112,6 +114,9 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             streak = streakOf(days),
             shelves = shelfRows,
             quotes = quotes.take(5),
+            dayQuote = quotes.filter { !it.text.startsWith("📝") }.let { qs ->
+                if (qs.isEmpty()) null else qs[Math.floorMod(LocalDate.now().toEpochDay(), qs.size.toLong()).toInt()]
+            },
             yearGoal = container.prefs.yearlyGoal,
             yearFinished = yearFinished,
         )

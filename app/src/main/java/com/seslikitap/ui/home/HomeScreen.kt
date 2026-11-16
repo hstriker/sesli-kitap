@@ -82,6 +82,17 @@ fun HomeScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             item { GoalCard(ui.todayMs, ui.goalMs, ui.streak, ui.yearFinished, ui.yearGoal, ui.weekMs) }
+            ui.dayQuote?.let { q ->
+                item(key = "gunun-alintisi") {
+                    Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp).clickable(onClick = onOpenQuotes)) {
+                        Column(Modifier.padding(14.dp)) {
+                            Text("Günün alıntısı", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Text("“${q.text}”", style = MaterialTheme.typography.bodyLarge, maxLines = 6, overflow = TextOverflow.Ellipsis)
+                            Text("— ${q.bookTitle}", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                }
+            }
             item { MoodCard(ui.continueBook, onContinue = { id -> ui.continueBook?.let { vm.continueListening(it) }; onOpenReader(id) }, onTool = onOpenTool) }
             ui.neglected?.let { b ->
                 item(key = "unutulan-${b.id}") {

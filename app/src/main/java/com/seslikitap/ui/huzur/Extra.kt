@@ -17,6 +17,12 @@ val EXTRA_SECTIONS: List<Pair<String, List<HuzurTile>>> = listOf(
         HuzurTile("solitaire", "♠️", "Solitaire", "Sakin bir kart falı"),
         HuzurTile("bilmece", "❓", "Günün bilmecesi", "Cevabı yarın"),
     ),
+    "Günün köşesi" to listOf(
+        HuzurTile("gunun", "☀️", "Bugün", "Alıntı, öykü, kelime, deyim, şiir"),
+        HuzurTile("masal", "🧞", "Masal ve fıkra", "Halk masalları, Nasreddin Hoca"),
+        HuzurTile("merak", "🔭", "Merak köşesi", "5 dakikalık sakin belgesel"),
+        HuzurTile("defter", "📒", "Kelime defterim", "Öğrendiğin kelimeler ve tekrar"),
+    ),
 )
 
 @Composable
@@ -32,5 +38,9 @@ fun ExtraPage(kind: String, onOpenBook: (Long) -> Unit, onOpenReader: (Long) -> 
         "sudoku" -> SudokuPage()
         "solitaire" -> SolitairePage()
         "bilmece" -> RiddlePage()
+        "gunun" -> DailyCornerPage(onOpenReader)
+        "masal" -> TalesPage()
+        "merak" -> CuriosityPage()
+        "defter" -> VocabPage()
     }
 }
