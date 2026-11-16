@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.LibraryBooks
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Spa
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -78,6 +79,7 @@ private data class Tab(val route: String, val label: String, val icon: androidx.
 private val TABS = listOf(
     Tab("home", "Ana Sayfa", Icons.Default.Home),
     Tab("library", "Kitaplık", Icons.AutoMirrored.Filled.LibraryBooks),
+    Tab("huzur", "Huzur", Icons.Default.Spa),
     Tab("stats", "İstatistik", Icons.Default.BarChart),
     Tab("settings", "Ayarlar", Icons.Default.Settings),
 )
@@ -152,6 +154,20 @@ private fun AppNavigation(openPlayer: MutableState<Boolean>) {
                     onOpenReader = openReader,
                     onOpenFolders = { goTab("settings") },
                     onAddDrive = { nav.navigate("drive") },
+                )
+            }
+            composable("huzur") {
+                com.seslikitap.ui.huzur.HuzurScreen(onOpen = { kind -> nav.navigate("huzur/$kind") })
+            }
+            composable(
+                "huzur/{kind}",
+                arguments = listOf(navArgument("kind") { type = NavType.StringType }),
+            ) { entry ->
+                com.seslikitap.ui.huzur.HuzurDetail(
+                    kind = entry.arguments?.getString("kind") ?: "",
+                    onBack = { nav.popBackStack() },
+                    onOpenBook = openBook,
+                    onOpenReader = openReader,
                 )
             }
             composable("stats") {

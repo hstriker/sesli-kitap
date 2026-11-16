@@ -24,6 +24,7 @@ class SesliKitapApp : Application() {
         // Uygulama dinlerken kapandıysa Rahatsız Etmeyin açık kalmasın
         com.seslikitap.player.FocusMode.exit(this, container.prefs)
         if (container.prefs.voiceMode == "gemini") com.seslikitap.player.GeminiBankWorker.schedule(this)
+        com.seslikitap.player.GentleWorker.schedule(this)
     }
 }
 
@@ -211,6 +212,28 @@ class Prefs(context: Context) {
     /** "Yarım kalanlar" hatırlatması: kitap → bu zamana kadar sorma. */
     fun nudgeSnoozedUntil(bookId: Long): Long = sp.getLong("nudge_$bookId", 0L)
     fun snoozeNudge(bookId: Long, until: Long) = sp.edit().putLong("nudge_$bookId", until).apply()
+
+    /** Nazik hatırlatıcı: açık mı, saat (dakika cinsinden gün içi), kaç günde bir. */
+    var reminderOn: Boolean
+        get() = sp.getBoolean("reminder_on", false)
+        set(v) = sp.edit().putBoolean("reminder_on", v).apply()
+
+    var reminderMinute: Int
+        get() = sp.getInt("reminder_minute", 20 * 60 + 30)
+        set(v) = sp.edit().putInt("reminder_minute", v).apply()
+
+    var reminderEvery: Int
+        get() = sp.getInt("reminder_every", 1)
+        set(v) = sp.edit().putInt("reminder_every", v).apply()
+
+    var lastReminderDay: String?
+        get() = sp.getString("last_reminder_day", null)
+        set(v) = sp.edit().putString("last_reminder_day", v).apply()
+
+    /** Kapanış kelimesinin en son sorulduğu gün. */
+    var closingAskedDay: String?
+        get() = sp.getString("closing_asked_day", null)
+        set(v) = sp.edit().putString("closing_asked_day", v).apply()
 
     /** Gemini sesi: ses adı, anlatıcı tonu, kota durumu. */
     var geminiVoice: String

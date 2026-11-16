@@ -1009,6 +1009,23 @@ class Player(
 
     private val container get() = context.container
 
+    /** Sesli not: dinlerken söylenen not, o anki cümleye bağlı olarak alıntılara eklenir. */
+    fun addNote(note: String) {
+        val st = _state.value
+        val id = st.bookId ?: return
+        val ch = _chapter.value ?: return
+        val i = st.sentenceIndex.coerceIn(0, (ch.sentences.size - 1).coerceAtLeast(0))
+        if (ch.sentences.isEmpty()) return
+        val s = ch.sentences[i]
+        container.library.addQuote(
+            com.seslikitap.data.QuoteEntity(
+                bookId = id, chapterIndex = ch.index, blockIndex = s.blockIndex,
+                sentenceIndex = ch.sentenceInBlock(i), text = "📝 $note — (“${ch.text(i).take(120)}”)",
+                bookTitle = st.bookTitle, author = st.author, createdAt = System.currentTimeMillis(),
+            )
+        )
+    }
+
     fun goToBookmark(b: BookmarkEntity) {
         val c = content ?: return
         scope.launch {

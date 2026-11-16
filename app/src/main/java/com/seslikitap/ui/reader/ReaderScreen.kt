@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.seslikitap.ui.reader
 
@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.SelfImprovement
@@ -119,6 +120,62 @@ fun ReaderScreen(
 
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    // Sesli not (dinlerken söylenen not alıntılara eklenir)
+    val dictateNote = com.seslikitap.ui.huzur.rememberDictation { text ->
+        player.addNote(text)
+        scope.launch { snackbar.showSnackbar("Notun alıntılara eklendi 📝") }
+    }
+
+    // Kapanış kelimesi: bu ekranda en az 10 dk dinlediysen çıkarken bir kez sorulur (günde bir)
+    var listenedMs by remember { mutableStateOf(0L) }
+    var playStart by remember { mutableStateOf<Long?>(null) }
+    var askClosing by remember { mutableStateOf(false) }
+    LaunchedEffect(st.playing) {
+        val now = System.currentTimeMillis()
+        if (st.playing) { if (playStart == null) playStart = now }
+        else playStart?.let { listenedMs += now - it; playStart = null }
+    }
+    val today = remember { java.time.LocalDate.now().toString() }
+    fun leave() {
+        val total = listenedMs + (playStart?.let { System.currentTimeMillis() - it } ?: 0L)
+        if (total >= 10 * 60_000L && prefs.closingAskedDay != today) askClosing = true else onBack()
+    }
+    androidx.activity.compose.BackHandler(enabled = !askClosing) { leave() }
+    if (askClosing) {
+        var word by remember { mutableStateOf("") }
+        fun close(save: Boolean) {
+            prefs.closingAskedDay = today
+            if (save && word.isNotBlank()) {
+                val w = word.trim().split(" ").first()
+                scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                    com.seslikitap.data.CalmStore.add(
+                        context, com.seslikitap.data.CalmStore.WORDS,
+                        org.json.JSONObject().put("t", System.currentTimeMillis()).put("w", w).put("b", st.bookTitle),
+                    )
+                }
+            }
+            askClosing = false
+            onBack()
+        }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { close(false) },
+            title = { Text("Bugün nasıl hissettirdi?") },
+            text = {
+                Column {
+                    Text("Tek kelime yeter.", style = MaterialTheme.typography.bodySmall)
+                    androidx.compose.material3.OutlinedTextField(value = word, onValueChange = { word = it }, singleLine = true, modifier = Modifier.padding(vertical = 8.dp))
+                    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Huzurlu", "Dingin", "Meraklı", "Heyecanlı", "Hüzünlü", "Düşünceli", "Yorgun").forEach { w ->
+                            AssistChip(onClick = { word = w }, label = { Text(w) })
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { close(true) }) { Text("Kaydet") } },
+            dismissButton = { TextButton(onClick = { close(false) }) { Text("Geç") } },
+        )
+    }
+
     LaunchedEffect(bookId) { player.open(bookId) }
     LaunchedEffect(st.error) {
         st.error?.let { snackbar.showSnackbar(it) }
@@ -152,7 +209,7 @@ fun ReaderScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
+                    IconButton(onClick = { leave() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri") }
                 },
                 actions = {
                     IconButton(onClick = { sheet = ReaderSheet.RECAP }) {
@@ -177,6 +234,11 @@ fun ReaderScreen(
                                 text = { Text("Kitaba sor") },
                                 leadingIcon = { Icon(Icons.Default.QuestionAnswer, null) },
                                 onClick = { more = false; sheet = ReaderSheet.ASK },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Sesli not ekle") },
+                                leadingIcon = { Icon(Icons.Default.Mic, null) },
+                                onClick = { more = false; dictateNote() },
                             )
                             DropdownMenuItem(
                                 text = { Text("Karakterler") },
