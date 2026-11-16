@@ -40,7 +40,10 @@ Veritabanı göçleri (1→2→3) gerçek veriyle denenmedi. İlk açılışta a
 - Doğrulanacak: uzun parçada ses kesiliyor mu (tanı kaydında "Gemini parça: … karakter/sn"; normal ~13-15),
   ilk parçanın bekleme süresi, anlatıcı talimatının sesli okunması (prompt `anlatici2` ile düzeltildi mi?).
 
-Yol haritası ve paket durumu: **`docs/YOL-HARITASI.md`**. Emre denemeleri tüm paketler bitince topluca yapacak.
+Yol haritası ve paket durumu: **`docs/YOL-HARITASI.md`** (8 paketin hepsi derlendi, 16 Kasım 2026; HİÇBİRİ telefonda
+denenmedi). Emre denemeleri topluca yapacak; sıradaki iş onun geri bildirimlerine göre hata düzeltmek.
+Bilinen sınırlar: Chromecast'e doğrudan yayın yok (yalnızca Android ses çıkışı seçicisi/Bluetooth); harita, zaman
+çizgisi, deyim, şiir, yazar bilgisi Gemini'den gelir, hatalı olabilir; uygulama içi oyunların hepsi özgün.
 
 ## Emre'nin seçtiği yeni özellikler (henüz başlanmadı; "hemen başlama, önce liste büyüsün" dedi)
 

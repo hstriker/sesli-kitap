@@ -30,6 +30,12 @@ Emre'nin kişisel EPUB/PDF seslendirme uygulaması (tek kullanıcı, Android + w
   - `player/`: `Player` (tek örnek; cümle kuyruğu, konum, kalan süre, uyku/sallama, diyalog sesi, özet, eşitleme yüklemesi), `TtsEngine` (Android TTS), `CloudTtsEngine` + `CloudSynth` (WaveNet, önbellek `files/ses`, aylık kota `cloudMonthlyLimit` 3,8 M), `PlaybackService` (MediaBrowserServiceCompat: bildirim, kilit ekranı, Android Auto), `PlayerWidget`, `PrefetchWorker`, `ExportWorker` (MP3), `Gemini`, `BookContent`.
   - `ui/`: alt menü (Ana Sayfa / Kitaplık / İstatistik / Ayarlar) `MainActivity`; `home`, `library` (klasör görünümü, raf filtresi), `stats`, `folders` (Ayarlar: klasörler, doğal ses, Gemini, yedek, hedef, tanı kaydı), `book`, `reader`, `quotes`.
   - `Kayit` (tanı kaydı, Ayarlar → Tanı kaydı → Kopyala).
+  - Yeni (Kasım 2026): `player/GeminiTts*`, `GeminiAudio` (Gemini sesi, AAC önbellek `files/ses-gemini`, parça boyu kendini ayarlar),
+    `GeminiBankWorker` (hak biriktirme/tatil), `BookAi` + `AiCache` (kitapla konuşma, yanıtlar `files/ai`), `CalmAi`, `AudioSession`
+    (kitap dışı sesli içerik), `GentleWorker` (hatırlatıcı, mektuplar), `FocusMode` (Rahatsız Etmeyin, pil);
+    `data/Extras.kt` (Journal, LibraryTools), `CalmStore` (Huzur kayıtları JSON, `files/huzur`), `Weather` (Open-Meteo);
+    `ui/huzur/*` (Huzur sekmesi: rahatlama, oyunlar, günün köşesi, hatıralar, yürüyüş), `ui/tools` (kitaplık araçları),
+    `ui/calm` (sakin ekran, araba modu). Veritabanı şeması DEĞİŞMEDİ (yeni veriler prefs/JSON dosyalarında).
 - **web/**: `index.html`, `app.js` (GIS girişi, Drive, okuyucu, speechSynthesis, eşitleme), `metin.js` (core'un JS karşılığı — paragraf/cümle bölünmesi birebir aynı olmalı), `config.js` (`SK_CLIENT_ID`), `firebase.json`; `web.yml` Firebase Hosting'e yükler (`FIREBASE_SERVICE_ACCOUNT` secret).
 
 ## Google Cloud

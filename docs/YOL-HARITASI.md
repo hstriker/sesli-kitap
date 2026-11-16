@@ -12,7 +12,21 @@ topluca** yapacak; her paket CI'da derlenip Release'e konur. Kodlar grup adları
 | **P5 Mini oyunlar** | C1 zen bahçesi, C2 kabarcık, C3 mandala, C4 kapaktan yapboz, C5 kelime avı, C6 eksik kelime, C7 hangi kitaptan?, C8 hafıza kartları, C9 sudoku + solitaire, E11 günün bilmecesi | ✅ derlendi (58ec4ad), denenmedi |
 | **P6 Günün küçük şeyleri** | B8 günün öyküsü/şiiri, B11 günün alıntısı, D12 günün kelimesi, G8 deyim/atasözü, G9 eski şairler, G7 masal/fıkra köşesi, G10 merak köşesi, F8 kelime defteri | ✅ derlendi (4a877ed), denenmedi |
 | **P7 Hatıralar ve koleksiyon** | C11 okuma haritası, C12 kitap rafı odası, C14 yıllık okuma kartı, E9 kendi ödüllerin, E10 rozetler, E18 kitap ağacı, G11 edebiyat zaman çizgisi, G12 gece gökyüzü, C17 temalar, C18 havaya göre öneri, F11 kitabın şarkıları | ✅ derlendi (3eb5155), denenmedi |
-| **P8 Cihazlar ve hareket** | D19 hoparlöre gönder (Bluetooth/Chromecast), E15 tablet/yatay, B14 yürüyüş modu | |
+| **P8 Cihazlar ve hareket** | D19 hoparlöre gönder (Bluetooth/Chromecast), E15 tablet/yatay, B14 yürüyüş modu | ✅ derlendi (ac4513c), denenmedi |
 
 Kurallar: Gemini hakkı kullanan her şey sonucu telefonda saklar (tekrar hak yemez); ücretli/kart isteyen hiçbir şey yok;
 oyunlar özgün (belirli bir oyunun kopyası değil); veritabanı değişirse Migration.
+
+## Toplu deneme listesi (Emre, hepsi bitince)
+
+İzinler (ilk kullanımda istenir): Rahatsız Etmeyin erişimi (Ayarlar → Dinleme konforu → İzin ver), mikrofon (akşam notu),
+fiziksel etkinlik (yürüyüş adımları), bildirim (hatırlatıcı, mektup). Konuşma tanıma için Google uygulaması gerekir.
+
+1. Gemini sesi: uzun parçalar, kesik ses var mı (tanı kaydı "karakter/sn"), model geçişi (Flash → 2.5 Flash → Lite), kalan sınır satırı
+2. Biriktirme ertesi sabah çalıştı mı (Ayarlar → Biriktirme: "Son: …"); tatil listesi "Şimdi hazırla"
+3. Kulaklık çift/üçlü basış 30 sn; bildirim düğmeleri; Android Auto önceki/sonraki bölüm
+4. Sakin ekran (çift dokun, kaydır, uzun bas), ritüel, Benim zamanım, araba modu
+5. Kitaba sor, karakterler, bölüm sonu özeti, tanıtım/yazar, kitap kulübü, diyalog ikinci sesi, yabancı dil çevirisi
+6. Ana sayfa: Bugün nasılsın, yarım kalanlar kartı, günün alıntısı, hava kartı; araçlar ekranları
+7. Huzur sekmesi: her kutucuk
+8. Temalar, tablet/yatay okuyucu, hoparlöre gönder
