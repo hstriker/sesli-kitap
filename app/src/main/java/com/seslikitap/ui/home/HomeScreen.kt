@@ -63,6 +63,7 @@ fun HomeScreen(
     onOpenLibraryFolder: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenQuotes: () -> Unit,
+    onOpenTool: (String, String?) -> Unit = { _, _ -> },
 ) {
     val vm = appViewModel { HomeViewModel(it) }
     val ui by vm.ui.collectAsStateWithLifecycle()
@@ -80,7 +81,18 @@ fun HomeScreen(
             contentPadding = PaddingValues(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            item { GoalCard(ui.todayMs, ui.goalMs, ui.streak, ui.yearFinished, ui.yearGoal) }
+            item { GoalCard(ui.todayMs, ui.goalMs, ui.streak, ui.yearFinished, ui.yearGoal, ui.weekMs) }
+            item { MoodCard(ui.continueBook, onContinue = { id -> ui.continueBook?.let { vm.continueListening(it) }; onOpenReader(id) }, onTool = onOpenTool) }
+            ui.neglected?.let { b ->
+                item(key = "unutulan-${b.id}") {
+                    NeglectedCard(
+                        b,
+                        onContinue = { onOpenReader(b.id) },
+                        onShelve = { vm.shelveLater(b) },
+                        onLater = { vm.snoozeNudge(b) },
+                    )
+                }
+            }
 
             ui.continueBook?.let { b ->
                 item {
@@ -91,9 +103,13 @@ fun HomeScreen(
                     )
                 }
             }
+            if (ui.readingList.isNotEmpty()) {
+                item { BookRow("Okuma listem 📋", ui.readingList, onOpenBook) }
+            }
             if (ui.inProgress.isNotEmpty()) {
                 item { BookRow("Yarım kalanlar", ui.inProgress, onOpenBook) }
             }
+            item { ToolsRow(onOpenTool) }
             if (ui.favorites.isNotEmpty()) {
                 item { BookRow("Favorilerim ❤️", ui.favorites, onOpenBook) }
             }
@@ -175,7 +191,7 @@ private fun SectionTitle(text: String, action: (@Composable () -> Unit)? = null)
 }
 
 @Composable
-private fun GoalCard(todayMs: Long, goalMs: Long, streak: Int, yearFinished: Int, yearGoal: Int) {
+private fun GoalCard(todayMs: Long, goalMs: Long, streak: Int, yearFinished: Int, yearGoal: Int, weekMs: Long = 0) {
     val progress = if (goalMs > 0) (todayMs.toFloat() / goalMs).coerceIn(0f, 1f) else 0f
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -193,15 +209,21 @@ private fun GoalCard(todayMs: Long, goalMs: Long, streak: Int, yearFinished: Int
             }
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text("Bugün ${formatMinutes(todayMs)} dinledin", style = MaterialTheme.typography.titleMedium)
+                // Baskısız dil: kaçırılan hedef yok, kendine ayırdığın zaman var
                 Text(
-                    if (progress >= 1f) "Günlük hedefini tamamladın 🎉"
-                    else "Hedef: ${formatMinutes(goalMs)} · ${formatMinutes(goalMs - todayMs)} kaldı",
+                    if (todayMs < 60_000L) "Bugün kendine biraz zaman ayırmaya ne dersin?"
+                    else "Bugün kendine ${formatMinutes(todayMs)} ayırdın",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    if (progress >= 1f) "Günlük niyetini gerçekleştirdin 🌿"
+                    else if (weekMs >= 60_000L) "Bu hafta kendine ${formatMinutes(weekMs)} ayırdın"
+                    else "Niyetin: günde ${formatMinutes(goalMs)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
                 Text(
-                    "${java.time.Year.now().value} hedefi: $yearFinished / $yearGoal kitap",
+                    "${java.time.Year.now().value}: $yearFinished kitapla yol arkadaşlığı ettin",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )

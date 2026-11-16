@@ -198,6 +198,20 @@ class Prefs(context: Context) {
         get() = sp.getString("gemini_dialog_voice", null)
         set(v) = sp.edit().putString("gemini_dialog_voice", v).apply()
 
+    /** Okuma listesi (sıradaki kitaplar, sırasıyla). */
+    var readingList: List<Long>
+        get() = sp.getString("reading_list", null)?.split(',')?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+        set(v) = sp.edit().putString("reading_list", v.distinct().joinToString(",")).apply()
+
+    /** Kitaplıkta gizlenen kitaplar (ör. çift kopyalar). */
+    var hiddenBooks: Set<Long>
+        get() = sp.getStringSet("hidden_books", emptySet())?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
+        set(v) = sp.edit().putStringSet("hidden_books", v.map { it.toString() }.toSet()).apply()
+
+    /** "Yarım kalanlar" hatırlatması: kitap → bu zamana kadar sorma. */
+    fun nudgeSnoozedUntil(bookId: Long): Long = sp.getLong("nudge_$bookId", 0L)
+    fun snoozeNudge(bookId: Long, until: Long) = sp.edit().putLong("nudge_$bookId", until).apply()
+
     /** Gemini sesi: ses adı, anlatıcı tonu, kota durumu. */
     var geminiVoice: String
         get() = sp.getString("gemini_voice", "Kore") ?: "Kore"

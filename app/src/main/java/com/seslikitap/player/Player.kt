@@ -61,6 +61,8 @@ data class PlayerState(
     val longAbsence: Boolean = false,
     /** Kitap bitince: serinin sıradaki kitabı. */
     val nextBookId: Long? = null,
+    /** Sıradaki kitap okuma listesinden mi (değilse serinin devamı). */
+    val nextFromList: Boolean = false,
     val nextBookTitle: String? = null,
 ) {
     val active get() = bookId != null
@@ -227,6 +229,7 @@ class Player(
                 val entity = withContext(Dispatchers.IO) { db.books().get(bookId) }
                     ?: throw IllegalStateException("Kitap bulunamadı")
                 bookLanguage = entity.language
+                withContext(Dispatchers.IO) { com.seslikitap.data.Journal.markStarted(context, bookId) }
                 if (entity.status == BookStatus.DRM) throw IllegalStateException("Bu kitap DRM ile korunuyor, seslendirilemez")
                 val newContent = withContext(Dispatchers.IO) {
                     val opened = BookOpener.open(context, entity.uri, entity.fileName)
@@ -551,11 +554,18 @@ class Player(
                 scope.launch {
                     val next = withContext(Dispatchers.IO) {
                         markFinished(id)
+                        com.seslikitap.data.Journal.markFinished(context, id)
+                        // Okuma listesinden düş; sıradaki: önce serinin devamı, yoksa okuma listesindeki ilk kitap
+                        prefs.readingList = prefs.readingList - id
                         val e = db.books().get(id)
                         val series = e?.series
-                        if (series != null) db.books().nextInSeries(series, e?.seriesIndex ?: 0.0) else null
+                        val inSeries = if (series != null) db.books().nextInSeries(series, e?.seriesIndex ?: 0.0) else null
+                        inSeries?.let { it to false }
+                            ?: prefs.readingList.firstNotNullOfOrNull { db.books().get(it) }?.let { it to true }
                     }
-                    if (next != null) _state.update { it.copy(nextBookId = next.id, nextBookTitle = next.title) }
+                    if (next != null) _state.update {
+                        it.copy(nextBookId = next.first.id, nextBookTitle = next.first.title, nextFromList = next.second)
+                    }
                 }
             }
             return

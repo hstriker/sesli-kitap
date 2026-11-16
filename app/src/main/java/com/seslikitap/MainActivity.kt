@@ -140,6 +140,7 @@ private fun AppNavigation(openPlayer: MutableState<Boolean>) {
                     onOpenLibraryFolder = { goTab("library") },
                     onOpenSettings = { goTab("settings") },
                     onOpenQuotes = { nav.navigate("quotes") },
+                    onOpenTool = { kind, mood -> nav.navigate("tools/$kind" + (mood?.let { "?mood=${android.net.Uri.encode(it)}" } ?: "")) },
                 )
             }
             composable("quotes") {
@@ -188,6 +189,20 @@ private fun AppNavigation(openPlayer: MutableState<Boolean>) {
                 com.seslikitap.ui.calm.CalmScreen(
                     ritual = entry.arguments?.getBoolean("ritual") ?: false,
                     onExit = { nav.popBackStack() },
+                )
+            }
+            composable(
+                "tools/{kind}?mood={mood}",
+                arguments = listOf(
+                    navArgument("kind") { type = NavType.StringType },
+                    navArgument("mood") { type = NavType.StringType; nullable = true; defaultValue = null },
+                ),
+            ) { entry ->
+                com.seslikitap.ui.tools.ToolsScreen(
+                    kind = entry.arguments?.getString("kind") ?: "",
+                    mood = entry.arguments?.getString("mood"),
+                    onBack = { nav.popBackStack() },
+                    onOpenBook = openBook,
                 )
             }
             composable("car") {

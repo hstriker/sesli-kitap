@@ -119,6 +119,23 @@ Bağlam için önceki cümleler: $context
 Cümle: $sentence
 """.trimIndent()
 
+    fun recommendPrompt(liked: List<String>, candidates: List<String>, mood: String?) = """
+Okuyucunun kişisel e-kitap arşivinden ona kitap önereceksin. Yalnızca aşağıdaki ADAYLAR listesinden seç.
+Okuyucunun sevdiği / bitirdiği kitaplar: ${if (liked.isEmpty()) "(henüz yok)" else liked.joinToString("; ")}
+${if (mood != null) "Okuyucunun bugünkü ruh hâli: $mood. Buna iyi gelecek kitapları seç." else ""}
+5 kitap seç. Her satıra tam olarak şu biçimde yaz: KİMLİK|neden bu kitap (bir cümle, sıcak bir dille)
+Başka hiçbir şey yazma.
+
+ADAYLAR (KİMLİK|başlık|yazar):
+${candidates.joinToString("\n")}
+""".trimIndent()
+
+    fun seriesPrompt(series: String, owned: List<String>) = """
+"$series" kitap serisinin kitaplarını yayın sırasıyla listele: her satıra "sıra. başlık". Okuyucunun elindekiler:
+${owned.joinToString("; ")}. Listenin sonuna bir cümleyle hangilerinin eksik olduğunu yaz.
+Bu seriyi tanımıyorsan yalnızca "Bu seri hakkında güvenilir bilgim yok." yaz. Uydurma.
+""".trimIndent()
+
     // ------------------------------------------------------------------ Kitap sayfası
 
     /** Spoiler'sız tanıtım: kitabın yalnızca başı gönderilir. */

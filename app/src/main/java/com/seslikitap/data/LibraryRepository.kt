@@ -22,6 +22,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -64,7 +65,21 @@ class LibraryRepository(
      * Tüm kitaplar. Tarama ya da dinleme sırasında veritabanı çok sık değiştiği için
      * ekranlar en fazla ~saniyede bir güncellenir (aradaki değişiklikler birleştirilir).
      */
-    val books: Flow<List<BookEntity>> = db.books().observeAll().throttleLatest(800)
+    /** Gizlenen kitaplar (çift kopyalar vb.) bütün ekranlardan çıkar. */
+    val hidden = MutableStateFlow(prefs.hiddenBooks)
+
+    fun setHidden(id: Long, hide: Boolean) {
+        val v = if (hide) hidden.value + id else hidden.value - id
+        prefs.hiddenBooks = v
+        hidden.value = v
+    }
+
+    val books: Flow<List<BookEntity>> = db.books().observeAll()
+        .combine(hidden) { list, h -> if (h.isEmpty()) list else list.filter { it.id !in h } }
+        .throttleLatest(800)
+
+    /** Gizlenenler dahil bütün kitaplar (çift kitap bulucu için). */
+    val allBooks: Flow<List<BookEntity>> = db.books().observeAll()
     val folders: Flow<List<FolderEntity>> = db.folders().observeAll()
 
     fun observeBook(id: Long) = db.books().observe(id)

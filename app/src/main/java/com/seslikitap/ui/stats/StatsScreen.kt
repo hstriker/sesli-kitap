@@ -260,8 +260,8 @@ private fun YearCard(ui: StatsUi, goal: Int, onGoal: () -> Unit) {
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                if (done >= goal) "Yıllık hedefini tamamladın! 🏆 ($done kitap)"
-                else "$done / $goal kitap · hedefe ${goal - done} kitap kaldı",
+                if (done >= goal) "Bu yıl $done kitapla yol arkadaşlığı ettin 🌿"
+                else "Bu yıl $done kitap bitirdin. Niyetin $goal kitaptı; acele yok, her kitap kendi zamanında.",
                 style = MaterialTheme.typography.bodyMedium,
             )
             Spacer(Modifier.height(10.dp))

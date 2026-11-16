@@ -36,6 +36,12 @@ data class HomeUi(
     val todayMs: Long = 0,
     val goalMs: Long = 30 * 60_000L,
     val streak: Int = 0,
+    /** Okuma listesi (sırasıyla). */
+    val readingList: List<BookEntity> = emptyList(),
+    /** Bir süredir dokunulmayan yarım kitap (nazik hatırlatma). */
+    val neglected: BookEntity? = null,
+    /** Bu hafta dinlenen süre. */
+    val weekMs: Long = 0,
 )
 
 /** Arka arkaya dinlenen gün sayısı (bugün ya da dün biten seri). En az 1 dakika dinlenen günler sayılır. */
@@ -81,7 +87,17 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
             .sortedByDescending { it.count }
 
         val today = LocalDate.now().toString()
+        val byIdOk = ok.associateBy { it.id }
+        val now = System.currentTimeMillis()
+        val neglected = inProgress.filter { b ->
+            b.progress in 0.02f..0.95f && (b.lastOpenedAt ?: now) < now - 21 * 86_400_000L &&
+                container.prefs.nudgeSnoozedUntil(b.id) < now
+        }.maxByOrNull { it.progress }
+        val weekStart = LocalDate.now().minusDays(6).toString()
         HomeUi(
+            readingList = container.prefs.readingList.mapNotNull { byIdOk[it] }.filter { !it.finished },
+            neglected = neglected,
+            weekMs = days.filter { it.day >= weekStart }.sumOf { it.ms },
             loaded = true,
             hasBooks = books.isNotEmpty(),
             continueBook = inProgress.firstOrNull(),
@@ -101,6 +117,25 @@ class HomeViewModel(private val container: AppContainer) : ViewModel() {
         )
     }.flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), HomeUi())
+
+    /** Yarım kitabı "Sonraya kalanlar" rafına kaldırır; bir daha sormaz. */
+    fun shelveLater(book: BookEntity) {
+        container.prefs.snoozeNudge(book.id, Long.MAX_VALUE)
+        viewModelScope.launch(Dispatchers.IO) {
+            val dao = container.db.shelves()
+            val name = "Sonraya kalanlar"
+            val id = dao.allShelves().firstOrNull { it.name == name }?.id
+                ?: dao.insert(com.seslikitap.data.ShelfEntity(name = name, createdAt = System.currentTimeMillis()))
+            dao.add(com.seslikitap.data.ShelfBookEntity(id, book.id, System.currentTimeMillis()))
+        }
+        suggestionSeed.value = suggestionSeed.value + 1
+    }
+
+    /** "Sonra": bu kitap için 30 gün sorma. */
+    fun snoozeNudge(book: BookEntity) {
+        container.prefs.snoozeNudge(book.id, System.currentTimeMillis() + 30 * 86_400_000L)
+        suggestionSeed.value = suggestionSeed.value + 1
+    }
 
     init {
         // Rastgele öneri her açılışta farklı olsun

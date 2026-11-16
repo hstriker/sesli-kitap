@@ -282,7 +282,10 @@ fun ReaderScreen(
                             ) {
                                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text("Kitap bitti 🎉 Serinin sıradaki kitabı:", style = MaterialTheme.typography.labelMedium)
+                                        Text(
+                                            if (st.nextFromList) "Kitap bitti 🎉 Okuma listende sıradaki:" else "Kitap bitti 🎉 Serinin sıradaki kitabı:",
+                                            style = MaterialTheme.typography.labelMedium,
+                                        )
                                         Text(st.nextBookTitle ?: "", style = MaterialTheme.typography.titleMedium)
                                     }
                                     Button(onClick = { follow = true; st.nextBookId?.let { player.open(it, autoPlay = true) } }) {
