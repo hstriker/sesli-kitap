@@ -40,6 +40,8 @@ Veritabanı göçleri (1→2→3) gerçek veriyle denenmedi. İlk açılışta a
 - Doğrulanacak: uzun parçada ses kesiliyor mu (tanı kaydında "Gemini parça: … karakter/sn"; normal ~13-15),
   ilk parçanın bekleme süresi, anlatıcı talimatının sesli okunması (prompt `anlatici2` ile düzeltildi mi?).
 
+Yol haritası ve paket durumu: **`docs/YOL-HARITASI.md`**. Emre denemeleri tüm paketler bitince topluca yapacak.
+
 ## Emre'nin seçtiği yeni özellikler (henüz başlanmadı; "hemen başlama, önce liste büyüsün" dedi)
 
 Amaç: uygulama "yoğun hayattan kaçış ve rahatlama alanı" olacak; yalnızca kitap şart değil.
