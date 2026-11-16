@@ -64,7 +64,10 @@ Amaç: uygulama "yoğun hayattan kaçış ve rahatlama alanı" olacak; yalnızca
   (D1-5, 7, 14-17 istenmedi.)
 - **E (seçilenler):** 8 tatil modu (kitap + Gemini seslerini önceden indir), 9 kendi ödüllerin (yılın kitabı vb.),
   10 baskısız koleksiyon rozetleri, 11 günün bilmecesi, 15 tablet/yatay iki sütun, 18 kitap ağacı (bitirince yaprak).
-  F listesi önerildi.
+- **F (seçilenler):** 3 hafta sonuna yetecek kitaplar (kalan süreye göre), 4 yarım kalanlar (nazik soru, rafa kaldır),
+  7 kitaplardan düşünce sorusu, 8 kelime defteri + haftalık tekrar, 11 kitabın şarkıları (YouTube/Spotify bağlantısı),
+  12 ekrana bakmadan kumanda (çift dokun/kaydır), 14 pil dostu mod.
+  G listesi önerildi ("bu son" dedi) → sonra yol haritası.
 
 ## Kararlar
 
