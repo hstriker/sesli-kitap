@@ -74,6 +74,13 @@ Amaç: uygulama "yoğun hayattan kaçış ve rahatlama alanı" olacak; yalnızca
   12 ekrana bakmadan kumanda (çift dokun/kaydır), 14 pil dostu mod.
   G listesi önerildi ("bu son" dedi) → sonra yol haritası.
 
+## Sıradaki seçimler (BAŞLAMA — Emre önce toplu deneme yapacak, sonra "başla" diyecek)
+
+- **H (seçildi):** 1 telaffuz sözlüğü, 5 kamu malı (telifsiz) Türkçe kitap indirme (Vikikaynak vb.), 6 karakter ilişki
+  ağı (okunan yere kadar), 9 Gemini seslerini Drive'a yedekleme, 10 bilgisayarda (web) Gemini sesi, 12 bölüm geçiş tınısı.
+  (2, 3, 4, 7, 8, 11 istenmedi.) Akşam sesli notlarının Drive'a yedeklenmesi soruldu, yanıt yok.
+- I grubu önerildi, seçim bekleniyor.
+
 ## Kararlar
 
 - **Ücretli/kart isteyen hiçbir adım önerme**; önce ücret/ön ödeme riskini açıkça söyle (doğal ses olayı).
