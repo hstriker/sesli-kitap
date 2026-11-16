@@ -48,7 +48,8 @@ interface SpeechEngine {
 /** Cümleleri uzun parçalar hâlinde seslendiren motor (Gemini): her istek bir parça. */
 interface GroupSpeechEngine : SpeechEngine {
     /** [items]: parçanın bütün cümleleri (kimlik, metin); [startAt]: çalmaya başlanacak cümlenin sırası. */
-    fun speakGroup(items: List<Pair<String, String>>, startAt: Int, flush: Boolean)
+    /** [text]: seslendirilecek metnin tamamı (verilmezse cümleler boşlukla birleştirilir). */
+    fun speakGroup(items: List<Pair<String, String>>, startAt: Int, flush: Boolean, text: String? = null)
 }
 
 interface SpeechListener {

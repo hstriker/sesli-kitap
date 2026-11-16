@@ -33,6 +33,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class PlayerState(
     val bookId: Long? = null,
@@ -225,6 +226,7 @@ class Player(
             try {
                 val entity = withContext(Dispatchers.IO) { db.books().get(bookId) }
                     ?: throw IllegalStateException("Kitap bulunamadı")
+                bookLanguage = entity.language
                 if (entity.status == BookStatus.DRM) throw IllegalStateException("Bu kitap DRM ile korunuyor, seslendirilemez")
                 val newContent = withContext(Dispatchers.IO) {
                     val opened = BookOpener.open(context, entity.uri, entity.fileName)
@@ -410,6 +412,8 @@ class Player(
     }
 
     private fun speakFromCurrent() {
+        bridgeId = null
+        bridgeThen = null
         generation++
         queuedUntil = _state.value.sentenceIndex - 1
         consecutiveErrors = 0
@@ -463,7 +467,8 @@ class Player(
             val start = if (gi == 0) 0 else ends[gi - 1] + 1
             val end = ends[gi]
             val items = (start..end).map { utteranceId(ch.index, it) to spokenText(ch, it) }
-            e.speakGroup(items, next - start, first)
+            val text = GeminiAudio.groupText(ch, start, end, prefs.normalizeText, prefs.geminiDialogVoice != null)
+            e.speakGroup(items, next - start, first, text)
             queuedUntil = end
             first = false
         }
@@ -491,11 +496,18 @@ class Player(
     }
 
     override fun onDone(id: String) {
+        if (finishBridge(id)) return
         scope.launch {
             val (gen, chIdx, s) = parseId(id) ?: return@launch
             if (gen != generation || !_state.value.playing) return@launch
             val ch = _chapter.value ?: return@launch
             if (chIdx != ch.index) return@launch
+            // Bölüm sonu özeti açıksa, bölüm bitmeden özeti hazırla (geçişte bekleme olmasın)
+            if (prefs.chapterSummary && hasGeminiKey && s >= ch.sentences.size - 25 && summaryPrepared != "${_state.value.bookId}:${ch.index}") {
+                summaryPrepared = "${_state.value.bookId}:${ch.index}"
+                val idx = ch.index
+                scope.launch { runCatching { chapterSummary(idx) } }
+            }
             if (s >= ch.sentences.size - 1) {
                 onChapterFinished()
             } else {
@@ -507,6 +519,7 @@ class Player(
 
     override fun onError(id: String, code: Int) {
         Log.w(TAG, "TTS hatası $code, $id")
+        if (finishBridge(id)) return
         scope.launch {
             val (gen, _, _) = parseId(id) ?: return@launch
             if (gen != generation) return@launch
@@ -546,6 +559,16 @@ class Player(
                 }
             }
             return
+        }
+        // Bölüm sonu sesli özeti (isteğe bağlı): özet okunur, sonra sıradaki bölüm başlar
+        if (prefs.chapterSummary && hasGeminiKey) {
+            val finished = _state.value.chapterIndex
+            val summary = withTimeoutOrNull(25_000) { runCatching { chapterSummary(finished) }.getOrNull() }
+            if (!summary.isNullOrBlank() && _state.value.playing) {
+                showChapter(next, 0)
+                speakBridge("Bölümün kısa özeti. $summary") { speakFromCurrent() }
+                return
+            }
         }
         showChapter(next, 0)
         speakFromCurrent()
@@ -755,6 +778,91 @@ class Player(
         val (titles, text) = recapText()
         if (text.length < 200) return "Kitabın henüz başındasın; özetlenecek kadar ilerlemedin."
         return Gemini.generate(key, Gemini.recapPrompt(st.bookTitle, st.author, titles, text))
+    }
+
+    // ------------------------------------------------------------------ Kitapla konuşma (Gemini)
+
+    /** Açık kitabın dili (EPUB'dan; yabancı dil kitaplarında cümle çevirisi için). */
+    var bookLanguage: String? = null
+        private set
+
+    val isForeignBook: Boolean get() = bookLanguage?.lowercase()?.let { it.isNotBlank() && !it.startsWith("tr") } == true
+
+    suspend fun askBook(question: String, history: List<Pair<String, String>>): String {
+        val st = _state.value
+        val (_, text) = recapText(120_000)
+        if (text.length < 100) return "Kitabın henüz çok başındasın; biraz dinledikten sonra sorabilirsin."
+        return Gemini.generate(BookAi.key(context), BookAi.askPrompt(st.bookTitle, st.author, text, history.takeLast(4), question))
+    }
+
+    suspend fun characters(fresh: Boolean = false): String {
+        val st = _state.value
+        return AiCache.getOrPut(context, "karakter|${st.bookId}|${st.chapterIndex}", fresh) {
+            val (_, text) = recapText(150_000)
+            if (text.length < 300) "Henüz karakter tanıtacak kadar ilerlemedin."
+            else Gemini.generate(BookAi.key(context), BookAi.charactersPrompt(st.bookTitle, st.author, text), 0.2)
+        }
+    }
+
+    suspend fun thoughtQuestion(fresh: Boolean = false): String {
+        val st = _state.value
+        return AiCache.getOrPut(context, "dusunce|${st.bookId}|${st.chapterIndex}", fresh) {
+            val (_, text) = recapText(15_000)
+            if (text.length < 300) "Biraz daha dinledikten sonra sana güzel bir soru sorabilirim."
+            else Gemini.generate(BookAi.key(context), BookAi.thoughtPrompt(st.bookTitle, st.author, text), 0.8)
+        }
+    }
+
+    /** Bölüm sonu özeti (bölümün tamamı gönderilir; sonraki bölümler gönderilmez). */
+    suspend fun chapterSummary(index: Int): String {
+        val c = content ?: throw java.io.IOException("Kitap açık değil")
+        val st = _state.value
+        return AiCache.getOrPut(context, "bolumozet|${st.bookId}|$index") {
+            val ch = withContext(Dispatchers.IO) { c.chapter(index) }
+            val text = (0 until ch.sentences.size).joinToString(" ") { ch.text(it) }.take(80_000)
+            if (text.length < 1500) "" else Gemini.generate(BookAi.key(context), BookAi.chapterSummaryPrompt(st.bookTitle, ch.title, text), 0.4)
+        }
+    }
+
+    suspend fun translate(ch: Chapter, sentence: Int): String {
+        val text = ch.text(sentence)
+        return AiCache.getOrPut(context, "ceviri|$text") {
+            val ctx = (maxOf(0, sentence - 3) until sentence).joinToString(" ") { ch.text(it) }
+            Gemini.generate(BookAi.key(context), BookAi.translatePrompt(text, ctx), 0.2)
+        }
+    }
+
+    /** Kitap kulübü: sohbetin sıradaki mesajı. */
+    suspend fun clubReply(transcript: List<Pair<String, String>>): String {
+        val st = _state.value
+        val (_, text) = recapText(40_000)
+        return Gemini.generate(BookAi.key(context), BookAi.clubPrompt(st.bookTitle, st.author, text, transcript), 0.8)
+    }
+
+    private var summaryPrepared: String? = null
+
+    // Bölüm sonu özeti çalınırken sıradaki bölüme geçiş
+    private var bridgeId: String? = null
+    private var bridgeThen: (() -> Unit)? = null
+
+    private fun speakBridge(text: String, then: () -> Unit) {
+        generation++
+        val id = "kopru:$generation"
+        bridgeId = id
+        bridgeThen = then
+        engine().speak(id, text, true)
+    }
+
+    private fun finishBridge(id: String): Boolean {
+        if (id != bridgeId) return false
+        scope.launch {
+            if (bridgeId != id) return@launch
+            bridgeId = null
+            val then = bridgeThen
+            bridgeThen = null
+            if (_state.value.playing) then?.invoke()
+        }
+        return true
     }
 
     /** Kitaptan bağımsız bir metni (ör. özet) seslendirir; kitap duraklatılır, konum değişmez. */

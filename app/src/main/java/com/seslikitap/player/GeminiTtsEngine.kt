@@ -69,14 +69,19 @@ class GeminiTtsEngine(
 
     // ------------------------------------------------------------------ SpeechEngine
 
-    override fun speak(id: String, text: String, flush: Boolean, alternate: Boolean) =
-        speakGroup(listOf(id to text), 0, flush)
+    /** Tek başına söylenenler (çeviri, kısa yanıt): kısaysa telefon sesiyle — Gemini hakkı yenmesin. */
+    override fun speak(id: String, text: String, flush: Boolean, alternate: Boolean) {
+        if (flush) stop()
+        val audio = if (text.length < SHORT_ASIDE) CompletableDeferred<File?>(null) else audioFor(text)
+        groups.trySend(Group(listOf(id to text), 0, audio))
+        ensureLoop()
+    }
 
-    override fun speakGroup(items: List<Pair<String, String>>, startAt: Int, flush: Boolean) {
+    override fun speakGroup(items: List<Pair<String, String>>, startAt: Int, flush: Boolean, text: String?) {
         if (items.isEmpty()) return
         if (flush) stop()
-        val text = items.joinToString(" ") { it.second }
-        groups.trySend(Group(items, startAt.coerceIn(0, items.size - 1), audioFor(text)))
+        val full = text ?: items.joinToString(" ") { it.second }
+        groups.trySend(Group(items, startAt.coerceIn(0, items.size - 1), audioFor(full)))
         ensureLoop()
     }
 
@@ -132,12 +137,13 @@ class GeminiTtsEngine(
     private fun audioFor(text: String): Deferred<File?> {
         val v = voice
         val narrator = prefs.geminiNarrator
-        GeminiAudio.cached(context, text, v, narrator)?.let { return CompletableDeferred(it) }
-        val key = GeminiAudio.key(text, v, narrator)
+        val dialog = prefs.geminiDialogVoice
+        GeminiAudio.cached(context, text, v, narrator, dialog)?.let { return CompletableDeferred(it) }
+        val key = GeminiAudio.key(text, v, narrator, dialog)
         inflight[key]?.let { return it }
         val d = ioScope.async {
             try {
-                request(text, v, narrator)
+                request(text, v, narrator, dialog)
             } finally {
                 inflight.remove(key)
             }
@@ -146,8 +152,8 @@ class GeminiTtsEngine(
         return d
     }
 
-    private suspend fun request(text: String, voice: String, narrator: Boolean): File? = try {
-        GeminiAudio.synthesize(context, prefs, text, voice, narrator, ::onSwitch)
+    private suspend fun request(text: String, voice: String, narrator: Boolean, dialog: String?): File? = try {
+        GeminiAudio.synthesize(context, prefs, text, voice, narrator, ::onSwitch, dialog)
     } catch (e: GeminiAudio.NoKeyException) {
         notice.value = "Gemini anahtarı yok; telefon sesiyle okunuyor. Ayarlar → Yapay zekâ özeti'nden ekleyin."
         null
@@ -171,6 +177,11 @@ class GeminiTtsEngine(
         Kayit.error("Gemini sesi alınamadı", e)
         notice.value = "Gemini sesi alınamadı (${e.message}); telefon sesiyle devam ediliyor."
         null
+    }
+
+    private companion object {
+        /** Bundan kısa tek başına metinler telefon sesiyle okunur. */
+        const val SHORT_ASIDE = 400
     }
 
     private fun onSwitch(from: String, to: String) {

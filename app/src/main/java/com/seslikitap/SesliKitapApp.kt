@@ -188,6 +188,16 @@ class Prefs(context: Context) {
         get() = sp.getStringSet(PINNED_DRIVE, emptySet()) ?: emptySet()
         set(v) = sp.edit().putStringSet(PINNED_DRIVE, v).apply()
 
+    /** Bölüm bitince Gemini ile kısa sesli özet. */
+    var chapterSummary: Boolean
+        get() = sp.getBoolean("chapter_summary", false)
+        set(v) = sp.edit().putBoolean("chapter_summary", v).apply()
+
+    /** Gemini sesinde diyaloglar için ikinci ses (null: kapalı). */
+    var geminiDialogVoice: String?
+        get() = sp.getString("gemini_dialog_voice", null)
+        set(v) = sp.edit().putString("gemini_dialog_voice", v).apply()
+
     /** Gemini sesi: ses adı, anlatıcı tonu, kota durumu. */
     var geminiVoice: String
         get() = sp.getString("gemini_voice", "Kore") ?: "Kore"

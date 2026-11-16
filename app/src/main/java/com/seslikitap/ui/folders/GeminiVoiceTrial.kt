@@ -88,6 +88,28 @@ fun GeminiVoiceTrialSection() {
         }
         val summary = remember(status, enabled) { GeminiTts.quotaSummary(prefs) }
         Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+        var dialogVoice by remember { mutableStateOf(prefs.geminiDialogVoice) }
+        var dialogMenu by remember { mutableStateOf(false) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Diyaloglarda ikinci ses:", modifier = Modifier.weight(1f))
+            Column {
+                TextButton(onClick = { dialogMenu = true }) {
+                    Text(dialogVoice?.let { d -> GeminiTts.VOICES.firstOrNull { it.first == d }?.second ?: d } ?: "Kapalı")
+                }
+                DropdownMenu(expanded = dialogMenu, onDismissRequest = { dialogMenu = false }) {
+                    DropdownMenuItem(text = { Text("Kapalı") }, onClick = {
+                        dialogVoice = null; dialogMenu = false
+                        prefs.geminiDialogVoice = null; container.player.geminiSettingsChanged()
+                    })
+                    GeminiTts.VOICES.filter { it.first != voice }.forEach { (name, label) ->
+                        DropdownMenuItem(text = { Text(label) }, onClick = {
+                            dialogVoice = name; dialogMenu = false
+                            prefs.geminiDialogVoice = name; container.player.geminiSettingsChanged()
+                        })
+                    }
+                }
+            }
+        }
         Text("Dene", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 8.dp))
         OutlinedTextField(
             value = text,

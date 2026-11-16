@@ -140,6 +140,7 @@ fun BookDetailScreen(bookId: Long, onBack: () -> Unit, onListen: () -> Unit) {
             }
             item { ShelfSection(e.id) }
             item { ExportButton(e.id, e.title) }
+            item { AiIntroSection(e) }
             val err = loadError ?: if (e.status == BookStatus.DRM) e.errorMessage else null
             if (err != null) {
                 item {

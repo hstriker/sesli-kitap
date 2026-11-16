@@ -64,6 +64,7 @@ class GeminiBankWorker(context: Context, params: WorkerParameters) : CoroutineWo
         var ready = 0
         val voice = prefs.geminiVoice
         val narrator = prefs.geminiNarrator
+        val dialog = prefs.geminiDialogVoice
         val opts = ExtractOptions(prefs.skipFootnotes, prefs.skipPageNumbers)
         outer@ for (bookId in books) {
             val entity = c.db.books().get(bookId) ?: continue
@@ -91,12 +92,12 @@ class GeminiBankWorker(context: Context, params: WorkerParameters) : CoroutineWo
                     var start = 0
                     for (end in ends) {
                         if (end >= from) {
-                            val text = GeminiAudio.groupText(ch, start, end, prefs.normalizeText)
-                            if (GeminiAudio.cached(applicationContext, text, voice, narrator) != null) {
+                            val text = GeminiAudio.groupText(ch, start, end, prefs.normalizeText, dialog != null)
+                            if (GeminiAudio.cached(applicationContext, text, voice, narrator, dialog) != null) {
                                 ready++
                             } else {
                                 try {
-                                    GeminiAudio.synthesize(applicationContext, prefs, text, voice, narrator)
+                                    GeminiAudio.synthesize(applicationContext, prefs, text, voice, narrator, null, dialog)
                                     made++
                                 } catch (e: GeminiTts.QuotaException) {
                                     GeminiTts.recordQuota(prefs, e)

@@ -13,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Translate
+import com.seslikitap.container
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -51,9 +53,19 @@ fun SentenceActionsSheet(
     onDismiss: () -> Unit,
     onQuote: () -> Unit,
     onPlayFrom: () -> Unit,
+    foreign: Boolean = false,
 ) {
     var meaning by remember(action) { mutableStateOf<Meaning>(Meaning.Idle) }
     var lookup by remember(action) { mutableStateOf(false) }
+    val player = androidx.compose.ui.platform.LocalContext.current.container.player
+    var translating by remember(action) { mutableStateOf(false) }
+    var translation by remember(action) { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(translating) {
+        if (!translating) return@LaunchedEffect
+        translation = try { player.translate(action.chapter, action.sentence) } catch (e: Exception) { e.message ?: "Çevrilemedi" }
+        translating = false
+    }
 
     LaunchedEffect(lookup) {
         if (!lookup) return@LaunchedEffect
@@ -85,6 +97,22 @@ fun SentenceActionsSheet(
                 leadingContent = { Icon(Icons.Default.PlayArrow, null) },
                 modifier = Modifier.clickable(onClick = onPlayFrom),
             )
+            if (foreign) {
+                ListItem(
+                    headlineContent = { Text("Türkçesi") },
+                    supportingContent = { Text("Cümlenin Türkçesini göster ve sesli oku") },
+                    leadingContent = { Icon(Icons.Default.Translate, null) },
+                    modifier = Modifier.clickable { if (translation == null) translating = true },
+                )
+                if (translating) CircularProgressIndicator(Modifier.padding(20.dp))
+                translation?.let { t ->
+                    Text(t, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                    androidx.compose.material3.TextButton(
+                        onClick = { player.speakAside(t) },
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                    ) { Text("Sesli dinle") }
+                }
+            }
             if (action.word.length >= 2) {
                 ListItem(
                     headlineContent = { Text("\"${action.word}\" ne demek?") },

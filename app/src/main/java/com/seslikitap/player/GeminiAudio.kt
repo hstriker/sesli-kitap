@@ -41,13 +41,16 @@ object GeminiAudio {
 
     fun dir(context: Context) = File(context.filesDir, "ses-gemini").apply { mkdirs() }
 
-    fun key(text: String, voice: String, narrator: Boolean): String =
-        MessageDigest.getInstance("SHA-1").digest("$voice|${if (narrator) GeminiTts.PROMPT_VERSION else "duz"}|$text".toByteArray())
+    /** İki konuşmacılı metinde diyalog sesi anahtara girer; tek konuşmacılıda girmez (önbellek boşa gitmesin). */
+    fun key(text: String, voice: String, narrator: Boolean, dialogVoice: String? = null): String {
+        val v = if (dialogVoice != null && GeminiTts.isDialogText(text)) "$voice+$dialogVoice" else voice
+        return MessageDigest.getInstance("SHA-1").digest("$v|${if (narrator) GeminiTts.PROMPT_VERSION else "duz"}|$text".toByteArray())
             .joinToString("") { "%02x".format(it) }
+    }
 
     /** Önbellekteki ses (AAC ya da eski WAV), yoksa null. */
-    fun cached(context: Context, text: String, voice: String, narrator: Boolean): File? {
-        val k = key(text, voice, narrator)
+    fun cached(context: Context, text: String, voice: String, narrator: Boolean, dialogVoice: String? = null): File? {
+        val k = key(text, voice, narrator, dialogVoice)
         val d = dir(context)
         for (f in listOf(File(d, "$k.m4a"), File(d, "$k.wav"))) {
             if (f.exists() && f.length() > 44) {
@@ -67,23 +70,23 @@ object GeminiAudio {
      */
     suspend fun synthesize(
         context: Context, prefs: Prefs, text: String, voice: String, narrator: Boolean,
-        onSwitch: ((String, String) -> Unit)? = null,
+        onSwitch: ((String, String) -> Unit)? = null, dialogVoice: String? = null,
     ): File {
         val apiKey = prefs.geminiKey
         if (apiKey.isNullOrBlank()) throw NoKeyException()
         return lock.withLock {
-            cached(context, text, voice, narrator)?.let { return@withLock it }
+            cached(context, text, voice, narrator, dialogVoice)?.let { return@withLock it }
             if (System.currentTimeMillis() < prefs.geminiBlockedUntil) throw BlockedException()
-            val k = key(text, voice, narrator)
+            val k = key(text, voice, narrator, dialogVoice)
             val d = dir(context)
             val wav = File(d, "$k.wav.tmp")
             val r = try {
-                GeminiTts.synthesize(apiKey, text, voice, narrator, wav, prefs, onSwitch)
+                GeminiTts.synthesize(apiKey, text, voice, narrator, wav, prefs, onSwitch, dialogVoice = dialogVoice)
             } catch (e: GeminiTts.QuotaException) {
                 if (e.daily || e.retrySeconds > 90) throw e
                 Kayit.log("Gemini dakikalık sınır; ${e.retrySeconds} sn bekleniyor")
                 delay((e.retrySeconds + 2) * 1000L)
-                GeminiTts.synthesize(apiKey, text, voice, narrator, wav, prefs, onSwitch)
+                GeminiTts.synthesize(apiKey, text, voice, narrator, wav, prefs, onSwitch, dialogVoice = dialogVoice)
             }
             val rate = wavRate(wav)
             val secs = (wav.length() - 44) / (rate * 2.0)
@@ -173,9 +176,26 @@ object GeminiAudio {
         return ends.toIntArray()
     }
 
-    /** Parçanın seslendirilecek metni (oynatıcıdakiyle birebir aynı olmalı: önbellek anahtarı buna bağlı). */
-    fun groupText(ch: Chapter, start: Int, end: Int, normalize: Boolean): String =
-        (start..end).joinToString(" ") { spokenTextOf(ch, it, normalize) }
+    /**
+     * Parçanın seslendirilecek metni (oynatıcı ve biriktirme aynı metni üretmeli: önbellek anahtarı buna bağlı).
+     * [dialog]: diyalog sesi açıksa ve parçada konuşma varsa, satırlar konuşmacı adlarıyla yazılır.
+     */
+    fun groupText(ch: Chapter, start: Int, end: Int, normalize: Boolean, dialog: Boolean = false): String {
+        val hasDialog = dialog && (start..end).any { ch.dialog.getOrElse(it) { false } }
+        if (!hasDialog) return (start..end).joinToString(" ") { spokenTextOf(ch, it, normalize) }
+        val sb = StringBuilder()
+        var current: Boolean? = null
+        for (i in start..end) {
+            val d = ch.dialog.getOrElse(i) { false }
+            if (d != current) {
+                if (sb.isNotEmpty()) sb.append('\n')
+                sb.append(if (d) GeminiTts.SPEAKER_DIALOG else GeminiTts.SPEAKER_NARRATOR).append(": ")
+                current = d
+            } else sb.append(' ')
+            sb.append(spokenTextOf(ch, i, normalize))
+        }
+        return sb.toString()
+    }
 }
 
 /** WAV (16 bit tek kanal) → AAC (.m4a). Gemini sesi telefonda ~10 kat az yer kaplasın. */

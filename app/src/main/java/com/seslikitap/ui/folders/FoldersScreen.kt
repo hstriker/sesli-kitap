@@ -296,5 +296,20 @@ private fun GeminiKeySection() {
         androidx.compose.material3.TextButton(onClick = { prefs.geminiKey = key.ifBlank { null }; saved = true }) {
             Text(if (saved) "Kaydedildi ✓" else "Kaydet")
         }
+        var summary by remember { mutableStateOf(prefs.chapterSummary) }
+        androidx.compose.foundation.layout.Row(
+            Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Bölüm sonunda sesli özet")
+                Text(
+                    "Bir bölüm bitince 30 saniyelik özet okunur, sonra sıradaki bölüm başlar.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            androidx.compose.material3.Switch(checked = summary, onCheckedChange = { summary = it; prefs.chapterSummary = it })
+        }
     }
 }

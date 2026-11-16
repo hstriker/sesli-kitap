@@ -43,6 +43,8 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.QuestionAnswer
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.SelfImprovement
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.DirectionsCar
@@ -172,6 +174,16 @@ fun ReaderScreen(
                         }
                         DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
                             DropdownMenuItem(
+                                text = { Text("Kitaba sor") },
+                                leadingIcon = { Icon(Icons.Default.QuestionAnswer, null) },
+                                onClick = { more = false; sheet = ReaderSheet.ASK },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Karakterler") },
+                                leadingIcon = { Icon(Icons.Default.Groups, null) },
+                                onClick = { more = false; sheet = ReaderSheet.CHARACTERS },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Ritüelle başla (nefes + sakin ekran)") },
                                 leadingIcon = { Icon(Icons.Default.SelfImprovement, null) },
                                 onClick = { more = false; onCalm(true) },
@@ -248,6 +260,21 @@ fun ReaderScreen(
                                 }
                             }
                         }
+                        if (st.finished && player.hasGeminiKey) {
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                            ) {
+                                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        "Kitap kulübü: bu kitap üzerine biraz sohbet edelim mi?",
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    TextButton(onClick = { sheet = ReaderSheet.CLUB }) { Text("Başla") }
+                                }
+                            }
+                        }
                         if (st.finished && st.nextBookId != null) {
                             Card(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
@@ -295,6 +322,7 @@ fun ReaderScreen(
                 scope.launch { snackbar.showSnackbar("Alıntılara eklendi ✍️") }
             },
             onPlayFrom = { follow = true; player.seek(a.chapter.index, a.sentence); if (!st.playing) player.play(); actions = null },
+            foreign = player.isForeignBook,
         )
     }
 
@@ -315,11 +343,14 @@ fun ReaderScreen(
         )
         ReaderSheet.SLEEP -> SleepSheet(onDismiss = { sheet = null })
         ReaderSheet.RECAP -> RecapSheet(onDismiss = { sheet = null })
+        ReaderSheet.ASK -> AskSheet(onDismiss = { sheet = null })
+        ReaderSheet.CHARACTERS -> CharactersSheet(onDismiss = { sheet = null })
+        ReaderSheet.CLUB -> ClubSheet(bookId = bookId, onDismiss = { sheet = null })
         null -> {}
     }
 }
 
-enum class ReaderSheet { TOC, BOOKMARKS, SETTINGS, SLEEP, RECAP }
+enum class ReaderSheet { TOC, BOOKMARKS, SETTINGS, SLEEP, RECAP, ASK, CHARACTERS, CLUB }
 
 @Composable
 private fun EngineWarning(status: EngineStatus) {

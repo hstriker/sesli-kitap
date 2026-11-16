@@ -91,23 +91,32 @@ object GeminiTts {
      * Talimatın sesli okunmasını önlemek için Google'ın önerdiği yapı: notlar ayrı başlıkta,
      * okunacak metin yalnızca "TRANSCRIPT" başlığının altında.
      */
-    private fun narratorPrompt(text: String) = """
+    private fun narratorPrompt(text: String, dialog: Boolean) = """
 ### DIRECTOR'S NOTES
-Style: calm, warm, natural audiobook narrator. Turkish. Steady pace, natural pauses at punctuation.
-Speak ONLY the transcript below. Never read these notes or any heading aloud.
+Style: calm, warm, natural audiobook narrator. Turkish. Steady pace, natural pauses at punctuation.${if (dialog) "\n$SPEAKER_NARRATOR is the narrator; $SPEAKER_DIALOG voices the characters' spoken lines." else ""}
+Speak ONLY the transcript below. Never read these notes, headings or speaker names aloud.
 
 ### TRANSCRIPT
 $text
 """.trimIndent()
 
+    /** Diyalog sesi açıkken metindeki konuşmacı adları (ASCII: model adları güvenle tanısın). */
+    const val SPEAKER_NARRATOR = "Anlatici"
+    const val SPEAKER_DIALOG = "Konusan"
+
+    /** Metin iki konuşmacılı mı ("Konusan:" satırı var mı). */
+    fun isDialogText(text: String) = text.startsWith("$SPEAKER_DIALOG:") || text.contains("\n$SPEAKER_DIALOG:")
+
     /**
-     * Metni seslendirip WAV dosyası olarak [out]'a yazar. Her ses modelinin ayrı günlük sınırı var:
+     * Metni seslendirip WAV dosyası olarak [out]'a yazar. [dialogVoice]: iki konuşmacılı metinde konuşmaların sesi.
+     * Her ses modelinin ayrı günlük sınırı var:
      * sırayla denenir (önce Flash, sonra Flash-Lite, sonra diğerleri); sınırı dolan model ertesi güne kadar atlanır.
      * Hepsi dolduysa günlük [QuotaException] fırlatır. [onSwitch]: başka modele geçildi (eski, yeni).
      */
     suspend fun synthesize(
         apiKey: String, text: String, voice: String, narrator: Boolean, out: File,
         prefs: Prefs, onSwitch: ((String, String) -> Unit)? = null, onlyLite: Boolean = false,
+        dialogVoice: String? = null,
     ): Result = withContext(Dispatchers.IO) {
         val all = models(apiKey, prefs)
         val list = if (onlyLite) all.filter { it.contains("lite") }.ifEmpty { all } else all
@@ -117,7 +126,7 @@ $text
             if (prefs.geminiModelBlockedUntil(model) > now || prefs.geminiModelLimit(model) <= 0) continue
             if (previous != null) onSwitch?.invoke(previous, model)
             try {
-                val r = synthesizeWith(model, apiKey, text, voice, narrator, out)
+                val r = synthesizeWith(model, apiKey, text, voice, narrator, out, dialogVoice)
                 prefs.addGeminiUsage(text.length.toLong(), model)
                 return@withContext r
             } catch (e: QuotaException) {
@@ -136,19 +145,26 @@ $text
 
     private class ModelGoneException : IOException("model yok")
 
-    private suspend fun synthesizeWith(model: String, apiKey: String, text: String, voice: String, narrator: Boolean, out: File): Result =
+    private suspend fun synthesizeWith(
+        model: String, apiKey: String, text: String, voice: String, narrator: Boolean, out: File, dialogVoice: String?,
+    ): Result =
         withContext(Dispatchers.IO) {
-            val prompt = if (narrator) narratorPrompt(text) else text
+            val multi = dialogVoice != null && isDialogText(text)
+            val prompt = if (narrator) narratorPrompt(text, multi) else text
+            fun voiceCfg(v: String) = JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", v))
+            val speech = if (multi) JSONObject().put(
+                "multiSpeakerVoiceConfig", JSONObject().put(
+                    "speakerVoiceConfigs", JSONArray()
+                        .put(JSONObject().put("speaker", SPEAKER_NARRATOR).put("voiceConfig", voiceCfg(voice)))
+                        .put(JSONObject().put("speaker", SPEAKER_DIALOG).put("voiceConfig", voiceCfg(dialogVoice!!)))
+                )
+            ) else JSONObject().put("voiceConfig", voiceCfg(voice))
             val body = JSONObject()
                 .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))))
                 .put(
                     "generationConfig", JSONObject()
                         .put("responseModalities", JSONArray().put("AUDIO"))
-                        .put(
-                            "speechConfig", JSONObject().put(
-                                "voiceConfig", JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voice))
-                            )
-                        )
+                        .put("speechConfig", speech)
                 )
             val t0 = System.currentTimeMillis()
             val conn = URL("$BASE/models/$model:generateContent").openConnection() as HttpURLConnection
