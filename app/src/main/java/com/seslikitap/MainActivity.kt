@@ -177,7 +177,21 @@ private fun AppNavigation(openPlayer: MutableState<Boolean>) {
                 ReaderScreen(
                     bookId = entry.arguments?.getLong("id") ?: 0L,
                     onBack = { nav.popBackStack() },
+                    onCalm = { ritual -> nav.navigate("calm?ritual=$ritual") },
+                    onCar = { nav.navigate("car") },
                 )
+            }
+            composable(
+                "calm?ritual={ritual}",
+                arguments = listOf(navArgument("ritual") { type = NavType.BoolType; defaultValue = false }),
+            ) { entry ->
+                com.seslikitap.ui.calm.CalmScreen(
+                    ritual = entry.arguments?.getBoolean("ritual") ?: false,
+                    onExit = { nav.popBackStack() },
+                )
+            }
+            composable("car") {
+                com.seslikitap.ui.calm.CarScreen(onExit = { nav.popBackStack() })
             }
             composable("drive") {
                 DrivePickerScreen(

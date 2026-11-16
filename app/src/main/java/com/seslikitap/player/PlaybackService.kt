@@ -67,10 +67,17 @@ class PlaybackService : MediaBrowserServiceCompat() {
                 override fun onPlay() = player.play()
                 override fun onPause() = player.pause()
                 override fun onStop() = player.stop()
-                override fun onSkipToNext() = player.nextSentence()
-                override fun onSkipToPrevious() = player.previousSentence()
-                override fun onFastForward() = player.nextSentence()
-                override fun onRewind() = player.previousSentence()
+                // Kulaklık: çift basış = 30 sn ileri, üçlü basış = 30 sn geri
+                override fun onSkipToNext() = player.skipSeconds(SKIP_SECONDS)
+                override fun onSkipToPrevious() = player.skipSeconds(-SKIP_SECONDS)
+                override fun onFastForward() = player.skipSeconds(SKIP_SECONDS)
+                override fun onRewind() = player.skipSeconds(-SKIP_SECONDS)
+                override fun onCustomAction(action: String?, extras: Bundle?) {
+                    when (action) {
+                        CUSTOM_NEXT_CHAPTER -> player.nextChapter()
+                        CUSTOM_PREV_CHAPTER -> player.previousChapter()
+                    }
+                }
 
                 // Android Auto: listeden seçilen kitap
                 override fun onPlayFromMediaId(mediaId: String?, extras: Bundle?) {
@@ -114,8 +121,8 @@ class PlaybackService : MediaBrowserServiceCompat() {
         update(player.state.value)
         when (intent?.action) {
             ACTION_TOGGLE -> player.toggle()
-            ACTION_NEXT -> player.nextSentence()
-            ACTION_PREV -> player.previousSentence()
+            ACTION_NEXT -> player.skipSeconds(SKIP_SECONDS)
+            ACTION_PREV -> player.skipSeconds(-SKIP_SECONDS)
             ACTION_STOP -> player.stop()
         }
         return START_NOT_STICKY
@@ -248,6 +255,8 @@ class PlaybackService : MediaBrowserServiceCompat() {
                         PlaybackStateCompat.ACTION_SKIP_TO_NEXT or PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS or
                         PlaybackStateCompat.ACTION_FAST_FORWARD or PlaybackStateCompat.ACTION_REWIND
                 )
+                .addCustomAction(CUSTOM_PREV_CHAPTER, "Önceki bölüm", android.R.drawable.ic_media_previous)
+                .addCustomAction(CUSTOM_NEXT_CHAPTER, "Sonraki bölüm", android.R.drawable.ic_media_next)
                 .setState(
                     if (st.playing) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED,
                     PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN,
@@ -291,13 +300,13 @@ class PlaybackService : MediaBrowserServiceCompat() {
             .setOngoing(st.playing)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-            .addAction(android.R.drawable.ic_media_previous, "Önceki cümle", action(ACTION_PREV, 1))
+            .addAction(android.R.drawable.ic_media_rew, "30 sn geri", action(ACTION_PREV, 1))
             .addAction(
                 if (st.playing) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play,
                 if (st.playing) "Duraklat" else "Oynat",
                 action(ACTION_TOGGLE, 2),
             )
-            .addAction(android.R.drawable.ic_media_next, "Sonraki cümle", action(ACTION_NEXT, 3))
+            .addAction(android.R.drawable.ic_media_ff, "30 sn ileri", action(ACTION_NEXT, 3))
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Kapat", action(ACTION_STOP, 4))
             .setStyle(
                 androidx.media.app.NotificationCompat.MediaStyle()
@@ -367,6 +376,9 @@ class PlaybackService : MediaBrowserServiceCompat() {
         private const val ACTION_NEXT = "com.seslikitap.NEXT"
         private const val ACTION_PREV = "com.seslikitap.PREV"
         private const val ACTION_STOP = "com.seslikitap.STOP"
+        private const val CUSTOM_NEXT_CHAPTER = "sonraki_bolum"
+        private const val CUSTOM_PREV_CHAPTER = "onceki_bolum"
+        const val SKIP_SECONDS = 30
 
         @Volatile
         var running = false

@@ -42,6 +42,12 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SelfImprovement
+import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -89,7 +95,12 @@ import com.seslikitap.player.formatDuration
 import kotlinx.coroutines.launch
 
 @Composable
-fun ReaderScreen(bookId: Long, onBack: () -> Unit) {
+fun ReaderScreen(
+    bookId: Long,
+    onBack: () -> Unit,
+    onCalm: (ritual: Boolean) -> Unit = {},
+    onCar: () -> Unit = {},
+) {
     val context = LocalContext.current
     val container = context.container
     val player = container.player
@@ -153,6 +164,29 @@ fun ReaderScreen(bookId: Long, onBack: () -> Unit) {
                     }
                     IconButton(onClick = { sheet = ReaderSheet.SETTINGS }) {
                         Icon(Icons.Default.Tune, "Ses ayarları")
+                    }
+                    var more by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { more = true }) {
+                            Icon(Icons.Default.MoreVert, "Diğer")
+                        }
+                        DropdownMenu(expanded = more, onDismissRequest = { more = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Ritüelle başla (nefes + sakin ekran)") },
+                                leadingIcon = { Icon(Icons.Default.SelfImprovement, null) },
+                                onClick = { more = false; onCalm(true) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Sakin ekran") },
+                                leadingIcon = { Icon(Icons.Default.NightsStay, null) },
+                                onClick = { more = false; onCalm(false) },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Araba modu") },
+                                leadingIcon = { Icon(Icons.Default.DirectionsCar, null) },
+                                onClick = { more = false; onCar() },
+                            )
+                        }
                     }
                 },
             )

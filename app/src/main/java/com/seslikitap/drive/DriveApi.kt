@@ -437,7 +437,11 @@ object DriveCache {
         // Yarım kalmış eski indirmeler
         dir(context).listFiles { f -> f.name.contains(".part") && System.currentTimeMillis() - f.lastModified() > 3_600_000L }
             ?.forEach { it.delete() }
-        val files = dir(context).listFiles { f -> f.name.endsWith(".epub") }?.sortedByDescending { it.lastModified() } ?: return
+        // Tatil modundaki kitaplar silinmez
+        val pinned = context.getSharedPreferences(com.seslikitap.Prefs.FILE, Context.MODE_PRIVATE)
+            .getStringSet(com.seslikitap.Prefs.PINNED_DRIVE, emptySet()).orEmpty().map { "$it.epub" }.toSet()
+        val files = dir(context).listFiles { f -> f.name.endsWith(".epub") && f.name !in pinned }
+            ?.sortedByDescending { it.lastModified() } ?: return
         files.drop(KEEP).forEach { it.delete() }
     }
 }

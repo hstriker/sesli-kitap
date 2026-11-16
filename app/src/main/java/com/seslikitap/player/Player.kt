@@ -162,6 +162,7 @@ class Player(
     fun setGeminiVoice(on: Boolean) {
         val wasPlaying = _state.value.playing
         prefs.voiceMode = if (on) "gemini" else "phone"
+        if (on) GeminiBankWorker.schedule(context)
         resetEngine()
         if (wasPlaying) play()
     }
@@ -348,6 +349,7 @@ class Player(
         if (!requestFocus()) return
         val e = engine()
         _state.update { it.copy(playing = true, error = null, finished = false) }
+        if (prefs.myTimeDnd) FocusMode.enter(context, prefs)
         startListenClock()
         PlaybackService.start(context)
         if (e.status.value != EngineStatus.Ready) {
@@ -382,6 +384,7 @@ class Player(
         generation++
         engine?.stop()
         _state.update { it.copy(playing = false) }
+        FocusMode.exit(context, prefs)
         savePosition()
     }
 
@@ -443,20 +446,7 @@ class Player(
     private fun groupEnds(ch: Chapter): IntArray {
         val max = prefs.geminiGroupMax
         groupEndsFor?.let { (c, m, ends) -> if (c === ch && m == max) return ends }
-        val len = IntArray(ch.sentences.size) { ch.sentences[it].let { s -> s.end - s.start } + 1 }
-        val total = len.sum()
-        val n = ((total + max - 1) / max).coerceAtLeast(1)
-        val target = total / n
-        val ends = ArrayList<Int>()
-        var acc = 0
-        for (i in ch.sentences.indices) {
-            acc += len[i]
-            val last = i == ch.sentences.size - 1
-            val paragraphEnd = last || ch.sentences[i + 1].blockIndex != ch.sentences[i].blockIndex
-            val next = if (last) 0 else len[i + 1]
-            if (last || acc + next > max || (acc >= target && paragraphEnd)) { ends.add(i); acc = 0 }
-        }
-        return ends.toIntArray().also { groupEndsFor = Triple(ch, max, it) }
+        return GeminiAudio.groupEnds(ch, max).also { groupEndsFor = Triple(ch, max, it) }
     }
 
     /** Gemini: cümleleri parça parça sıraya koyar; çalan parçadan sonra bir parça önceden hazırlanır. */
@@ -603,6 +593,27 @@ class Player(
                 seek(prev, count - 1)
             }
         }
+    }
+
+    /**
+     * Zamana göre ileri/geri sarar (kulaklık düğmeleri, bildirim, sakin ekran kaydırma).
+     * Süre, ölçülen okuma hızıyla karaktere çevrilir; bölüm sınırında bir sonraki/önceki bölüme geçer.
+     */
+    fun skipSeconds(seconds: Int) {
+        val ch = _chapter.value ?: return
+        val st = _state.value
+        if (ch.sentences.isEmpty()) return
+        fun len(i: Int) = ch.sentences[i].let { it.end - it.start } + 1
+        var budget = (kotlin.math.abs(seconds) * cps * st.rate.coerceAtLeast(0.3f)).toInt()
+        var i = st.sentenceIndex.coerceIn(0, ch.sentences.size - 1)
+        if (seconds > 0) {
+            while (i < ch.sentences.size - 1 && budget > 0) { budget -= len(i); i++ }
+            if (budget > 0) { nextChapter(); return }
+        } else {
+            if (i == 0) { previousSentence(); return }
+            while (i > 0 && budget > 0) { i--; budget -= len(i) }
+        }
+        seek(ch.index, i)
     }
 
     fun nextChapter() {

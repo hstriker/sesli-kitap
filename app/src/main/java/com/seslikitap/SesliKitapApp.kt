@@ -21,6 +21,9 @@ class SesliKitapApp : Application() {
         try { com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext) } catch (_: Throwable) {}
         container = AppContainer(this)
         if (container.prefs.autoBackup) com.seslikitap.data.BackupWorker.schedule(this)
+        // Uygulama dinlerken kapandıysa Rahatsız Etmeyin açık kalmasın
+        com.seslikitap.player.FocusMode.exit(this, container.prefs)
+        if (container.prefs.voiceMode == "gemini") com.seslikitap.player.GeminiBankWorker.schedule(this)
     }
 }
 
@@ -54,7 +57,12 @@ class AppContainer(context: Context) {
 }
 
 class Prefs(context: Context) {
-    private val sp = context.getSharedPreferences("ayarlar", Context.MODE_PRIVATE)
+    private val sp = context.getSharedPreferences(FILE, Context.MODE_PRIVATE)
+
+    companion object {
+        const val FILE = "ayarlar"
+        const val PINNED_DRIVE = "pinned_drive"
+    }
 
     var librarySort: String
         get() = sp.getString("library_sort", "TITLE") ?: "TITLE"
@@ -134,6 +142,51 @@ class Prefs(context: Context) {
     var geminiKey: String?
         get() = sp.getString("gemini_key", null)
         set(v) = sp.edit().putString("gemini_key", v?.trim()).apply()
+
+    /** "Benim zamanım": dinlerken Rahatsız Etmeyin'i aç. */
+    var myTimeDnd: Boolean
+        get() = sp.getBoolean("my_time_dnd", false)
+        set(v) = sp.edit().putBoolean("my_time_dnd", v).apply()
+
+    /** Rahatsız Etmeyin'i uygulama mı açtı (kapatırken yalnızca kendi açtığını kapatır). */
+    var dndActiveByUs: Boolean
+        get() = sp.getBoolean("dnd_by_us", false)
+        set(v) = sp.edit().putBoolean("dnd_by_us", v).apply()
+
+    /** Pil azalınca (ya da güç tasarrufunda) animasyonları ve önceden hazırlamayı kıs. */
+    var batteryFriendly: Boolean
+        get() = sp.getBoolean("battery_friendly", true)
+        set(v) = sp.edit().putBoolean("battery_friendly", v).apply()
+
+    /** Sakin ekranda okunan cümle gösterilsin mi. */
+    var calmShowText: Boolean
+        get() = sp.getBoolean("calm_show_text", true)
+        set(v) = sp.edit().putBoolean("calm_show_text", v).apply()
+
+    /** Sakin ekran görüntüsü: "yagmur", "mum", "yildiz". */
+    var calmScene: String
+        get() = sp.getString("calm_scene", "yagmur") ?: "yagmur"
+        set(v) = sp.edit().putString("calm_scene", v).apply()
+
+    /** Kullanılmayan günlük Gemini hakkını sıfırlanmadan önce sıradaki bölümlere harca. */
+    var geminiBank: Boolean
+        get() = sp.getBoolean("gemini_bank", true)
+        set(v) = sp.edit().putBoolean("gemini_bank", v).apply()
+
+    /** Son biriktirme çalışmasının özeti (Ayarlar'da gösterilir). */
+    var geminiBankLast: String?
+        get() = sp.getString("gemini_bank_last", null)
+        set(v) = sp.edit().putString("gemini_bank_last", v).apply()
+
+    /** Tatil (çevrimdışı) modu: dosyası telefonda tutulan ve Gemini sesi önceden hazırlanan kitaplar. */
+    var offlineBooks: List<Long>
+        get() = sp.getString("offline_books", null)?.split(',')?.mapNotNull { it.toLongOrNull() } ?: emptyList()
+        set(v) = sp.edit().putString("offline_books", v.joinToString(",")).apply()
+
+    /** Telefondaki kopyası silinmeyecek Drive dosyaları (tatil modu). */
+    var pinnedDriveIds: Set<String>
+        get() = sp.getStringSet(PINNED_DRIVE, emptySet()) ?: emptySet()
+        set(v) = sp.edit().putStringSet(PINNED_DRIVE, v).apply()
 
     /** Gemini sesi: ses adı, anlatıcı tonu, kota durumu. */
     var geminiVoice: String
