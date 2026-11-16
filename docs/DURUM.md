@@ -79,7 +79,9 @@ Amaç: uygulama "yoğun hayattan kaçış ve rahatlama alanı" olacak; yalnızca
 - **H (seçildi):** 1 telaffuz sözlüğü, 5 kamu malı (telifsiz) Türkçe kitap indirme (Vikikaynak vb.), 6 karakter ilişki
   ağı (okunan yere kadar), 9 Gemini seslerini Drive'a yedekleme, 10 bilgisayarda (web) Gemini sesi, 12 bölüm geçiş tınısı.
   (2, 3, 4, 7, 8, 11 istenmedi.) Akşam sesli notlarının Drive'a yedeklenmesi soruldu, yanıt yok.
-- I grubu önerildi, seçim bekleniyor.
+- **I (seçildi):** 8 kapaksız kitaplara üretilmiş zarif kapak (başlık + yazar, kitaba özel renk), 10 internetsiz hazırlık
+  (şarjda + Wi-Fi'da yarım kalan son 5 kitabın dosyası indirilir/sabitlenir), 11 "Kütüphanecin" (ana sayfada adı olan,
+  okuduklarına göre günlük kısa not; Gemini, günde bir, saklanır). (Diğerleri istenmedi.)
 
 ## Kararlar
 
