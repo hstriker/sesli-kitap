@@ -18,6 +18,7 @@ class SesliKitapApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Kayit.init(this)
+        com.seslikitap.ui.theme.AppTheme.load(this)
         try { com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(applicationContext) } catch (_: Throwable) {}
         container = AppContainer(this)
         if (container.prefs.autoBackup) com.seslikitap.data.BackupWorker.schedule(this)
@@ -234,6 +235,10 @@ class Prefs(context: Context) {
     var closingAskedDay: String?
         get() = sp.getString("closing_asked_day", null)
         set(v) = sp.edit().putString("closing_asked_day", v).apply()
+
+    /** Rozetler için küçük bayraklar (gece kuşu, erkenci…). */
+    fun flag(name: String): Boolean = sp.getBoolean("rozet_$name", false)
+    fun setFlag(name: String) = sp.edit().putBoolean("rozet_$name", true).apply()
 
     /** Gemini sesi: ses adı, anlatıcı tonu, kota durumu. */
     var geminiVoice: String

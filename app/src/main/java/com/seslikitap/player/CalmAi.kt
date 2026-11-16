@@ -83,4 +83,26 @@ iki cümleyle açıkla.
 "$name" takımyıldızını ve ona dair mitolojik efsaneyi 120-180 kelimeyle, gece gökyüzüne bakan birine anlatır gibi
 sakin bir dille anlat. Gökyüzünde nasıl bulunacağına bir cümleyle değin. Emin olmadığın bilgiyi verme. $PLAIN
 """.trimIndent()
+
+    fun placesPrompt(books: List<String>) = """
+Aşağıdaki kitapların her biri için, hikâyenin ağırlıklı olarak GEÇTİĞİ ülkeyi (ya da ülkeleri) yaz.
+Her satıra tam olarak şu biçimde: KİMLİK|ISO2 kodu:Türkçe ülke adı;ISO2:ülke (en fazla 3 ülke)
+Kitabı tanımıyorsan ya da hayali bir dünyada geçiyorsa: KİMLİK|- yaz. Başka hiçbir şey yazma.
+
+KİTAPLAR (KİMLİK|başlık|yazar):
+${books.joinToString("\n")}
+""".trimIndent()
+
+    fun yearsPrompt(books: List<String>) = """
+Aşağıdaki kitapların ilk yayımlandığı yılı yaz. Her satıra tam olarak: KİMLİK|yıl (MÖ için eksi sayı).
+Emin değilsen KİMLİK|? yaz. Başka hiçbir şey yazma.
+
+KİTAPLAR (KİMLİK|başlık|yazar):
+${books.joinToString("\n")}
+""".trimIndent()
+
+    fun songsPrompt(title: String, author: String) = """
+"$title"${if (author.isNotBlank()) " ($author)" else ""} kitabının havasına, dönemine ve duygusuna uyan 6 gerçek şarkı ya da müzik eseri öner.
+Her satıra tam olarak: Sanatçı — Eser adı — neden (kısa). Gerçekte var olmayan eser uydurma. Başka hiçbir şey yazma.
+""".trimIndent()
 }

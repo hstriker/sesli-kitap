@@ -57,6 +57,13 @@ fun AiIntroSection(e: BookEntity) {
                 }
             }
         }
+        OutlinedButton(onClick = {
+            load(SONGS) {
+                com.seslikitap.player.AiCache.getOrPut(context, "sarkilar|${e.id}") {
+                    com.seslikitap.player.Gemini.generate(BookAi.key(context), com.seslikitap.player.CalmAi.songsPrompt(e.title, e.author), 0.6)
+                }
+            }
+        }, enabled = !busy, modifier = Modifier.padding(top = 4.dp)) { Text("🎵 Kitabın şarkıları") }
         if (title != null) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
@@ -66,10 +73,28 @@ fun AiIntroSection(e: BookEntity) {
                     Text(title!!, style = MaterialTheme.typography.titleSmall)
                     if (busy) CircularProgressIndicator(Modifier.padding(12.dp))
                     text?.let { t ->
-                        Text(t, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
-                        Row {
-                            TextButton(onClick = { player.speakAside(t) }) { Text("Sesli dinle") }
+                        if (title == SONGS) {
+                            // Her şarkı YouTube aramasında açılır
+                            t.lines().filter { it.isNotBlank() }.forEach { line ->
+                                val query = line.split("—").take(2).joinToString(" ").trim()
+                                TextButton(onClick = {
+                                    runCatching {
+                                        context.startActivity(
+                                            android.content.Intent(
+                                                android.content.Intent.ACTION_VIEW,
+                                                android.net.Uri.parse("https://www.youtube.com/results?search_query=" + android.net.Uri.encode(query)),
+                                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        )
+                                    }
+                                }) { Text("▶ $line", style = MaterialTheme.typography.bodySmall) }
+                            }
                             TextButton(onClick = { title = null; text = null }) { Text("Kapat") }
+                        } else {
+                            Text(t, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 6.dp))
+                            Row {
+                                TextButton(onClick = { player.speakAside(t) }) { Text("Sesli dinle") }
+                                TextButton(onClick = { title = null; text = null }) { Text("Kapat") }
+                            }
                         }
                     }
                 }
@@ -77,3 +102,5 @@ fun AiIntroSection(e: BookEntity) {
         }
     }
 }
+
+private const val SONGS = "Kitabın şarkıları"

@@ -355,6 +355,10 @@ class Player(
         val e = engine()
         _state.update { it.copy(playing = true, error = null, finished = false) }
         if (prefs.myTimeDnd) FocusMode.enter(context, prefs)
+        java.time.LocalTime.now().hour.let { h ->
+            if (h in 0..3) prefs.setFlag("gece")
+            if (h in 5..6) prefs.setFlag("erkenci")
+        }
         startListenClock()
         PlaybackService.start(context)
         if (e.status.value != EngineStatus.Ready) {

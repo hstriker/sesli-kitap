@@ -105,3 +105,24 @@ fun ToolsRow(onTool: (String, String?) -> Unit) {
         AssistChip(onClick = { onTool("duplicates", null) }, label = { Text("🔁 Çift kitaplar") })
     }
 }
+
+/** Havaya göre öneri (Ayarlar'da şehir seçildiyse). */
+@Composable
+fun WeatherCard(onTool: (String, String?) -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val city = androidx.compose.runtime.remember { com.seslikitap.data.Weather.city(context) } ?: return
+    var now by androidx.compose.runtime.remember { mutableStateOf<com.seslikitap.data.Weather.Now?>(null) }
+    androidx.compose.runtime.LaunchedEffect(city) { now = com.seslikitap.data.Weather.now(context) }
+    val n = now ?: return
+    val (desc, mood) = com.seslikitap.data.Weather.describe(n.code)
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+    ) {
+        Column(Modifier.padding(16.dp)) {
+            Text("${city.name}: $desc, ${n.temp.toInt()}°", style = MaterialTheme.typography.titleSmall)
+            Text("Bugünün havasına yakışan bir kitap ister misin?", style = MaterialTheme.typography.bodyMedium)
+            TextButton(onClick = { onTool("recommend", mood) }) { Text("Havaya göre öner") }
+        }
+    }
+}

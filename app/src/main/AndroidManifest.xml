@@ -54,6 +54,17 @@
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />
 
+        <!-- Yıllık okuma kartını paylaşmak için -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.paylas"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/paylasim" />
+        </provider>
+
         <!-- Ana ekran widget'ı -->
         <receiver
             android:name=".player.PlayerWidget"

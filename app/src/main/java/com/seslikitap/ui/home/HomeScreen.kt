@@ -93,6 +93,7 @@ fun HomeScreen(
                     }
                 }
             }
+            item(key = "hava") { WeatherCard(onOpenTool) }
             item { MoodCard(ui.continueBook, onContinue = { id -> ui.continueBook?.let { vm.continueListening(it) }; onOpenReader(id) }, onTool = onOpenTool) }
             ui.neglected?.let { b ->
                 item(key = "unutulan-${b.id}") {
