@@ -97,6 +97,81 @@ class Backup(private val context: Context) {
                 .put("dailyGoalMin", prefs.dailyGoalMin).put("yearlyGoal", prefs.yearlyGoal)
                 .put("normalizeText", prefs.normalizeText).put("skipFootnotes", prefs.skipFootnotes)
                 .put("skipPageNumbers", prefs.skipPageNumbers))
+            put("ekler", extras(::ref))
+        }
+    }
+
+    // ------------------------------------------------------------------ Yeni özelliklerin kayıtları (Kasım 2026)
+
+    private val calmLists = listOf(CalmStore.WORDS, CalmStore.LETTERS, CalmStore.STORIES, CalmStore.VOCAB, CalmStore.WALKS, "oduller")
+
+    /** Kitap günlüğü, okuma/tatil listeleri, gizlenenler, Huzur kayıtları ve yeni ayarlar. Ses kayıtları dahil değil. */
+    private fun extras(ref: (Long) -> JSONObject?): JSONObject = JSONObject().apply {
+        put("gunluk", JSONArray().apply {
+            Journal.all(context).forEach { (id, e) ->
+                ref(id)?.let { put(it.put("basla", e.started ?: 0).put("bitir", e.finished ?: 0).put("puan", e.rating).put("not", e.note)) }
+            }
+        })
+        put("okumaListesi", JSONArray().apply { prefs.readingList.forEach { id -> ref(id)?.let { put(it) } } })
+        put("tatilListesi", JSONArray().apply { prefs.offlineBooks.forEach { id -> ref(id)?.let { put(it) } } })
+        put("gizli", JSONArray().apply { prefs.hiddenBooks.forEach { id -> ref(id)?.let { put(it) } } })
+        put("huzur", JSONObject().apply {
+            calmLists.forEach { name -> put(name, JSONArray().apply { CalmStore.list(context, name).forEach { put(it) } }) }
+        })
+        put("ayarlar", JSONObject()
+            .put("geminiVoice", prefs.geminiVoice).put("geminiNarrator", prefs.geminiNarrator)
+            .put("geminiDialogVoice", prefs.geminiDialogVoice ?: "").put("chapterSummary", prefs.chapterSummary)
+            .put("myTimeDnd", prefs.myTimeDnd).put("batteryFriendly", prefs.batteryFriendly).put("geminiBank", prefs.geminiBank)
+            .put("reminderOn", prefs.reminderOn).put("reminderMinute", prefs.reminderMinute).put("reminderEvery", prefs.reminderEvery)
+            .put("theme", com.seslikitap.ui.theme.AppTheme.current.value)
+            .put("rozetler", JSONArray().apply { listOf("gece", "erkenci").filter { prefs.flag(it) }.forEach { put(it) } }))
+    }
+
+    private fun restoreExtras(e: JSONObject, find: (JSONObject) -> BookEntity?) {
+        e.optJSONArray("gunluk")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val b = find(o) ?: continue
+                Journal.update(context, b.id) { cur ->
+                    cur.copy(
+                        started = cur.started ?: o.optLong("basla").takeIf { it > 0 },
+                        finished = cur.finished ?: o.optLong("bitir").takeIf { it > 0 },
+                        rating = if (cur.rating > 0) cur.rating else o.optInt("puan"),
+                        note = cur.note.ifBlank { o.optString("not") },
+                    )
+                }
+            }
+        }
+        fun ids(name: String) = e.optJSONArray(name)?.let { arr -> (0 until arr.length()).mapNotNull { find(arr.getJSONObject(it))?.id } } ?: emptyList()
+        prefs.readingList = prefs.readingList + ids("okumaListesi").filter { it !in prefs.readingList }
+        prefs.offlineBooks = prefs.offlineBooks + ids("tatilListesi").filter { it !in prefs.offlineBooks }
+        context.container.library.let { lib -> ids("gizli").forEach { lib.setHidden(it, true) } }
+        e.optJSONObject("huzur")?.let { h ->
+            calmLists.forEach { name ->
+                val arr = h.optJSONArray(name) ?: return@forEach
+                val mine = CalmStore.list(context, name)
+                val seen = mine.map { it.toString() }.toHashSet()
+                val ids = mine.mapNotNull { it.optString("id").ifBlank { null } }.toHashSet()
+                val add = (0 until arr.length()).map { arr.getJSONObject(it) }.filter { o ->
+                    val id = o.optString("id").ifBlank { null }
+                    if (id != null) ids.add(id) else seen.add(o.toString())
+                }
+                if (add.isNotEmpty()) CalmStore.save(context, name, mine + add)
+            }
+        }
+        e.optJSONObject("ayarlar")?.let { a ->
+            prefs.geminiVoice = a.optString("geminiVoice", prefs.geminiVoice)
+            prefs.geminiNarrator = a.optBoolean("geminiNarrator", prefs.geminiNarrator)
+            a.optString("geminiDialogVoice").let { prefs.geminiDialogVoice = it.ifBlank { null } }
+            prefs.chapterSummary = a.optBoolean("chapterSummary", prefs.chapterSummary)
+            prefs.myTimeDnd = a.optBoolean("myTimeDnd", prefs.myTimeDnd)
+            prefs.batteryFriendly = a.optBoolean("batteryFriendly", prefs.batteryFriendly)
+            prefs.geminiBank = a.optBoolean("geminiBank", prefs.geminiBank)
+            prefs.reminderOn = a.optBoolean("reminderOn", prefs.reminderOn)
+            prefs.reminderMinute = a.optInt("reminderMinute", prefs.reminderMinute)
+            prefs.reminderEvery = a.optInt("reminderEvery", prefs.reminderEvery)
+            a.optString("theme").takeIf { it.isNotBlank() }?.let { com.seslikitap.ui.theme.AppTheme.set(context, it) }
+            a.optJSONArray("rozetler")?.let { r -> for (i in 0 until r.length()) prefs.setFlag(r.getString(i)) }
         }
     }
 
@@ -203,6 +278,9 @@ class Backup(private val context: Context) {
             prefs.normalizeText = a.optBoolean("normalizeText", prefs.normalizeText)
             prefs.skipFootnotes = a.optBoolean("skipFootnotes", prefs.skipFootnotes)
             prefs.skipPageNumbers = a.optBoolean("skipPageNumbers", prefs.skipPageNumbers)
+        }
+        if (!positionsOnly) json.optJSONObject("ekler")?.let { e ->
+            try { restoreExtras(e, ::find) } catch (ex: Exception) { Kayit.error("Ek kayıtlar geri yüklenemedi", ex) }
         }
         matched
     }
