@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.seslikitap.core.EpubParserTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-11-15T20:36:23" hostname="runnervmccnms" time="0.308">
+  <properties/>
+  <testcase name="coverFromFirstPageImage" classname="com.seslikitap.core.EpubParserTest" time="0.226"/>
+  <testcase name="epub3WithNavAndCoverImage" classname="com.seslikitap.core.EpubParserTest" time="0.016"/>
+  <testcase name="missingContainerAndManifestFallbacks" classname="com.seslikitap.core.EpubParserTest" time="0.018"/>
+  <testcase name="notAZipFails" classname="com.seslikitap.core.EpubParserTest" time="0.001"/>
+  <testcase name="epub2WithNcxMetaCoverAndWindows1254" classname="com.seslikitap.core.EpubParserTest" time="0.008"/>
+  <testcase name="drmIsDetectedButFontObfuscationIsNot" classname="com.seslikitap.core.EpubParserTest" time="0.024"/>
+  <testcase name="mojibakeTitleIsRepaired" classname="com.seslikitap.core.EpubParserTest" time="0.011"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

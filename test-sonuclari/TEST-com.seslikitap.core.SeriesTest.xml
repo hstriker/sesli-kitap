@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.seslikitap.core.SeriesTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-11-15T20:36:23" hostname="runnervmccnms" time="0.004">
+  <properties/>
+  <testcase name="doesNotGuessOrdinaryTitles" classname="com.seslikitap.core.SeriesTest" time="0.001"/>
+  <testcase name="readsCalibreSeriesMeta" classname="com.seslikitap.core.SeriesTest" time="0.002"/>
+  <testcase name="guessesFromTitle" classname="com.seslikitap.core.SeriesTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

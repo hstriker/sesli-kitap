@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.seslikitap.core.TextTest" tests="8" skipped="0" failures="0" errors="0" timestamp="2026-11-15T20:36:23" hostname="runnervmccnms" time="0.015">
+  <properties/>
+  <testcase name="turkishSentenceSplitting" classname="com.seslikitap.core.TextTest" time="0.007"/>
+  <testcase name="searchKeyIsTurkishInsensitive" classname="com.seslikitap.core.TextTest" time="0.001"/>
+  <testcase name="extractsParagraphsAndSkipsNotesAndPageNumbers" classname="com.seslikitap.core.TextTest" time="0.001"/>
+  <testcase name="decoderHandlesMisdeclaredLatin1" classname="com.seslikitap.core.TextTest" time="0.0"/>
+  <testcase name="selfClosingTitleDoesNotSwallowBody" classname="com.seslikitap.core.TextTest" time="0.003"/>
+  <testcase name="longSentencesAreBroken" classname="com.seslikitap.core.TextTest" time="0.001"/>
+  <testcase name="pathResolution" classname="com.seslikitap.core.TextTest" time="0.0"/>
+  <testcase name="dialogDashAndQuotes" classname="com.seslikitap.core.TextTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

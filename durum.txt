@@ -1,0 +1,6 @@
+sonuc=success
+commit=72022b6c825e69615c6b493950f0d749d7d414c2
+dal=main
+calisma=88
+adres=https://github.com/hstriker/sesli-kitap/actions/runs/43829960976
+zaman=2026-11-16T08:17:37Z
