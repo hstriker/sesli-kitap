@@ -33,6 +33,9 @@ val EXTRA_SECTIONS: List<Pair<String, List<HuzurTile>>> = listOf(
         HuzurTile("rozetler", "🎖️", "Rozetler", "Baskısız küçük sevinçler"),
         HuzurTile("gokyuzu", "✨", "Gece gökyüzü", "Takımyıldızlar ve efsaneleri"),
     ),
+    "Hareket" to listOf(
+        HuzurTile("yuruyus", "🚶", "Yürüyüş modu", "Yürürken dinle, adımlarını say"),
+    ),
 )
 
 @Composable
@@ -60,5 +63,6 @@ fun ExtraPage(kind: String, onOpenBook: (Long) -> Unit, onOpenReader: (Long) -> 
         "oduller" -> AwardsPage()
         "rozetler" -> BadgesPage()
         "gokyuzu" -> NightSkyPage()
+        "yuruyus" -> WalkPage()
     }
 }

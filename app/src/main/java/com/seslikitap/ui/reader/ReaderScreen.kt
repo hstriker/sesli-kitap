@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Speaker
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.QuestionAnswer
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.SelfImprovement
@@ -256,6 +258,11 @@ fun ReaderScreen(
                                 onClick = { more = false; onCalm(false) },
                             )
                             DropdownMenuItem(
+                                text = { Text("Hoparlöre gönder") },
+                                leadingIcon = { Icon(Icons.Default.Speaker, null) },
+                                onClick = { more = false; com.seslikitap.player.Output.openSwitcher(context) },
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Araba modu") },
                                 leadingIcon = { Icon(Icons.Default.DirectionsCar, null) },
                                 onClick = { more = false; onCar() },
@@ -356,15 +363,42 @@ fun ReaderScreen(
                                 }
                             }
                         }
-                        ChapterText(
-                            chapter = ch,
-                            current = st.sentenceIndex,
-                            fontSize = fontSize,
-                            follow = follow,
-                            onUserScroll = { follow = false },
-                            onSentenceTap = { i -> follow = true; player.seek(ch.index, i) },
-                            onSentenceLongPress = { i, w -> actions = SentenceAction(ch, i, w) },
-                        )
+                        // Tablet / yatay ekran: metin solda (okunaklı genişlikte), yanda kitap paneli
+                        val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 840
+                        Row(Modifier.fillMaxSize()) {
+                            Box(Modifier.weight(if (wide) 2f else 1f)) {
+                                ChapterText(
+                                    chapter = ch,
+                                    current = st.sentenceIndex,
+                                    fontSize = fontSize,
+                                    follow = follow,
+                                    onUserScroll = { follow = false },
+                                    onSentenceTap = { i -> follow = true; player.seek(ch.index, i) },
+                                    onSentenceLongPress = { i, w -> actions = SentenceAction(ch, i, w) },
+                                )
+                            }
+                            if (wide) {
+                                Column(
+                                    Modifier.weight(1f).fillMaxSize().padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    com.seslikitap.ui.BookCover(
+                                        st.coverPath, st.bookTitle, st.author,
+                                        Modifier.width(180.dp).height(260.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)),
+                                    )
+                                    Text(st.bookTitle, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp))
+                                    Text(st.chapterTitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    if (st.sentenceCount > 0) androidx.compose.material3.LinearProgressIndicator(
+                                        progress = { (st.sentenceIndex + 1f) / st.sentenceCount },
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                    )
+                                    TextButton(onClick = { sheet = ReaderSheet.TOC }) { Text("İçindekiler") }
+                                    TextButton(onClick = { sheet = ReaderSheet.ASK }) { Text("Kitaba sor") }
+                                    TextButton(onClick = { sheet = ReaderSheet.CHARACTERS }) { Text("Karakterler") }
+                                    TextButton(onClick = { onCalm(false) }) { Text("Sakin ekran") }
+                                }
+                            }
+                        }
                     }
                     if (!follow) {
                         SmallFloatingActionButton(

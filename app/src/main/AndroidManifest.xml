@@ -12,6 +12,8 @@
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- Akşam sesli notu -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Yürüyüş modu: adım sayar -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- Android 11+ cihazlarda yüklü seslendirme motorlarını görebilmek için -->
     <queries>
