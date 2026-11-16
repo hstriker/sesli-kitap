@@ -145,8 +145,8 @@ private fun WordOfDay() {
         }
         val text = (container.player.chapter.value?.let { ch -> (0 until minOf(ch.sentences.size, 300)).joinToString(" ") { ch.text(it) } } ?: "") +
             " " + quotes.joinToString(" ") { it.text }
-        val words = Regex("\\p{L}{7,14}").findAll(text).map { it.value.lowercase(TurkishText.TR) }.distinct()
-            .shuffled(java.util.Random(java.time.LocalDate.now().toEpochDay())).take(6).toList()
+        val words = Regex("\\p{L}{7,14}").findAll(text).map { it.value.lowercase(TurkishText.TR) }.distinct().toList()
+            .shuffled(java.util.Random(java.time.LocalDate.now().toEpochDay())).take(6)
         for (w in words) {
             val r = runCatching { Sozluk.ara(w) }.getOrNull() ?: continue
             result = r.madde to r.anlamlar.take(3)
